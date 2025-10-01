@@ -20,7 +20,7 @@ class GeneratorAgent:
 
         return resp_json["candidates"][0]["content"]["parts"][0]["text"]
 
-    def generate_code(self, prompt: str, history: dict) -> str:
+    def generate_code(self, history: dict) -> str:
         history_text = ""
         for i, entry in history.items():
             history_text += f"\n--- Iteration {i} ---\n"
@@ -50,9 +50,9 @@ class GeneratorAgent:
             Generate a **single, complete C++ source file** implementing the requested GEMM with **SIMD intrinsics** and **multi-threading**, tuned for the CPU below.
 
             **Target Platform (Host CPU):**
-            - Architecture: x86_64 (Intel 11th Gen Core i7-1195G7)
-            - SIMD ISA: AVX2, FMA, and AVX-512
-            - Threads: 8 logical CPUs (4 cores, SMT/HT=2)
+            - Architecture: x86_64 (AMD Ryzen 7 6800HS)
+            - SIMD ISA: AVX, AVX2, and FMA
+            - Threads: 16 logical CPUs (8 cores, SMT/HT=2)
             - OS: Linux (assume recent GCC/Clang toolchain)
 
             **CRITICAL FUNCTION INFORMATION:**
@@ -117,11 +117,13 @@ class GeneratorAgent:
 
             9) **CLI / Demo Main:**
             - Provide a `main()` that:
-                - Parses optional CLI args: M N K, seed, threads.
+                - Parses optional CLI args: M N K, seed, threads, and an optional **--dump-matrices** flag.
                 - Allocates and initializes A, B (random), C (zero).
+                - **If the `--dump-matrices` flag is present, it must write matrices A and B to `workspace/A.txt` and `workspace/B.txt` respectively.**
                 - Calls the top-level API from {function_signatures}, which internally dispatches to AVX-512/AVX2/scalar.
+                - **After the computation, if the `--dump-matrices` flag is present, it must write matrix C to `workspace/C.txt`.**
                 - Prints a short timing report (ms, effective GFLOP/s = 2*M*N*K / time).
-                - Optionally runs correctness check vs reference (toggle with a flag).
+            - Include a helper function `void write_matrix_to_file(const std::string& filename, const float* matrix, int rows, int cols, int ld)` that writes a matrix to a text file in a space-separated format (one row per line). This function must correctly handle the leading dimension `ld`.
 
             10) **Documentation & Comments:**
             - Briefly explain blocking choices, threading strategy, and ISA dispatch.

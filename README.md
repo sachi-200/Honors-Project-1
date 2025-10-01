@@ -8,4 +8,20 @@
 
 -`src/`: Source code for the project
 
--`unit_tests/`: Test cases for the generated code
+CPU Configurations
+
+```markdown
+**Target Platform (Host CPU):**
+            - Architecture: x86_64 (Intel 11th Gen Core i7-1195G7)
+            - SIMD ISA: AVX2, FMA, and AVX-512
+            - Threads: 8 logical CPUs (4 cores, SMT/HT=2)
+            - OS: Linux (assume recent GCC/Clang toolchain)
+```
+
+```markdown
+**Target Platform (Host CPU):**
+            - Architecture: x86_64 (AMD Ryzen 7 6800HS)
+            - SIMD ISA: AVX, AVX2, and FMA
+            - Threads: 16 logical CPUs (8 cores, SMT/HT=2)
+            - OS: Linux (assume recent GCC/Clang toolchain)
+```
