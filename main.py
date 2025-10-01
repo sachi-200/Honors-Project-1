@@ -5,11 +5,33 @@ from src.agents.generator import GeneratorAgent
 import json
 
 def main():
+    cpu_arch = ""
+    while cpu_arch not in ["amd", "intel"]:
+        cpu_arch = input("Enter CPU architecture (AMD/Intel): ").lower().strip()
+        if cpu_arch not in ["amd", "intel"]:
+            print("Invalid input. Please enter 'AMD' or 'Intel'.")
+
+    if cpu_arch == "amd":
+        cpu_model = 'AMD-Ryzen-7-6800HS'
+    else:
+        cpu_model = 'Intel-i7-1195G7'
+    print(f"Using profile: {cpu_model}")
+
+    matrix_size = ""
+    while not matrix_size.isdigit() or int(matrix_size) <= 0:
+        matrix_size = input("Enter the matrix side size for benchmarking (e.g., 1024): ").strip()
+        if not matrix_size.isdigit() or int(matrix_size) <= 0:
+            print("Invalid input. Please enter a positive integer.")
+
+
     generator = GeneratorAgent()
     history = {}
     max_gflops = 0.0
-    results_dir = "results"
+
+    results_dir = os.path.join("results", cpu_model, matrix_size)
     os.makedirs(results_dir, exist_ok=True)
+    print(f"Results will be saved in: {results_dir}")
+
     file_pattern = re.compile(r'^(\d+)-.*\.cpp$')
     next_file_num = 1
     try:
@@ -20,23 +42,29 @@ def main():
     except FileNotFoundError:
         pass
 
+    current_run_best_filepath = None
+
     for i in range(10):
         print(f"--- Iteration {i+1} ---")
         print("Generating code...")
-        generated_code = generator.generate_code(history)
+        generated_code = generator.generate_code(history, architecture=cpu_model)
         print("Evaluating code...")
-        feedback = evaluate_code(generated_code)
+        feedback = evaluate_code(generated_code, matrix_size=int(matrix_size))
         print(json.dumps(feedback, indent=4))
         history[i] = {"code": generated_code, "feedback": feedback}
 
         current_gflops = feedback.get('performance', {}).get('gflops')
         if current_gflops is not None:
             if current_gflops > max_gflops:
+                if current_run_best_filepath and os.path.exists(current_run_best_filepath):
+                    os.remove(current_run_best_filepath)
+
                 max_gflops = current_gflops
                 filename = f"{next_file_num}-{max_gflops:.4f}.cpp"
                 filepath = os.path.join(results_dir, filename)
                 with open(filepath, 'w') as f:
                     f.write(generated_code)
+                current_run_best_filepath = filepath
                 print(f"New best performance! Saved to {filepath}")
             else:
                 print(f"Current performance: {current_gflops:.2f} GFLOPS (Best: {max_gflops:.2f} GFLOPS)")

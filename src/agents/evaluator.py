@@ -97,7 +97,7 @@ def run_unit_tests(executable_path):
 
     return results
 
-def run_and_analyze(executable_path):
+def run_and_analyze(executable_path, matrix_size=2048):
     """Runs the code and extracts performance metrics."""
     events = [
         "cycles",
@@ -107,7 +107,7 @@ def run_and_analyze(executable_path):
         "branches",
         "branch-misses",
     ]
-    perf_args = ["2048", "2048", "2048"]
+    perf_args = [str(matrix_size)] * 3
     target_command = [f"./{executable_path}"] + perf_args
 
     perf_command = [
@@ -151,7 +151,7 @@ def run_and_analyze(executable_path):
 
     return metrics
 
-def evaluate_code(code_string):
+def evaluate_code(code_string, matrix_size=2048):
     """The main wrapper function for the evaluator."""
     feedback = {}
 
@@ -168,7 +168,7 @@ def evaluate_code(code_string):
         return feedback
 
     print("\t 3) Analyzing performance")
-    performance_metrics = run_and_analyze("workspace/a.out")
+    performance_metrics = run_and_analyze("workspace/a.out", matrix_size=matrix_size)
     feedback["performance"] = performance_metrics
 
     return feedback

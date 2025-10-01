@@ -28,7 +28,7 @@ class GeneratorAgent:
                 else:
                     raise
 
-    def generate_code(self, history: dict) -> str:
+    def generate_code(self, history: dict, architecture: str) -> str:
         history_text = ""
         for i, entry in history.items():
             history_text += f"\n--- Iteration {i} ---\n"
@@ -53,15 +53,27 @@ class GeneratorAgent:
                             int lda, int ldb, int ldc);
         """
 
+        architecture_details = {
+            "AMD-Ryzen-7-6800HS": """
+            - Architecture: x86_64 (AMD Ryzen 7 6800HS)
+            - SIMD ISA: AVX, AVX2, and FMA
+            - Threads: 16 logical CPUs (8 cores, SMT/HT=2)
+            - OS: Linux (assume recent GCC/Clang toolchain)
+            """,
+            "Intel-i7-1195G7": """
+            - Architecture: x86_64 (Intel 11th Gen Core i7-1195G7)
+            - SIMD ISA: AVX2, FMA, and AVX-512
+            - Threads: 8 logical CPUs (4 cores, SMT/HT=2)
+            - OS: Linux (assume recent GCC/Clang toolchain)
+            """,
+        }
+
         full_prompt = f"""
             You are an expert **C++** programmer specializing in **CPU-optimized dense matrix multiplication (GEMM)** for x86-64.
             Generate a **single, complete C++ source file** implementing the requested GEMM with **SIMD intrinsics** and **multi-threading**, tuned for the CPU below.
 
             **Target Platform (Host CPU):**
-            - Architecture: x86_64 (AMD Ryzen 7 6800HS)
-            - SIMD ISA: AVX, AVX2, and FMA
-            - Threads: 16 logical CPUs (8 cores, SMT/HT=2)
-            - OS: Linux (assume recent GCC/Clang toolchain)
+            {architecture_details[architecture]}
 
             **CRITICAL FUNCTION INFORMATION:**
             Based on analysis, the implementation requires these EXACT function signatures (C++):
