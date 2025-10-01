@@ -50,7 +50,47 @@ def run_unit_tests(executable_path, test_cases):
 
 def run_and_analyze(executable_path):
     """Runs the code and extracts performance metrics."""
-    pass
+    events = [
+        "cycles",
+        "instructions",
+        "cache-references",
+        "cache-misses",
+        "branches",
+        "branch-misses",
+    ]
+
+    perf_command = [
+        "perf",
+        "stat",
+        "-e",
+        ",".join(events),
+        f"./{executable_path}",
+    ]
+
+    result = subprocess.run(
+        perf_command, capture_output=True, text=True, timeout=30
+    )
+
+    if result.returncode != 0:
+        return {"success": False, "error": result.stderr}
+
+    output = result.stderr
+    metrics = {"success": True}
+
+    for event in events:
+        pattern = rf"^\s*([\d,]+)\s+{re.escape(event)}"
+        match = re.search(pattern, output, re.MULTILINE)
+        if match:
+            value = int(match.group(1).replace(",", ""))
+            metrics[event] = value
+        else:
+            metrics[event] = None
+
+    time_match = re.search(r"^\s*([\d.]+)\s+seconds time elapsed", output, re.MULTILINE)
+    if time_match:
+        metrics["execution_time_seconds"] = float(time_match.group(1))
+
+    return metrics
 
 def evaluate_code(code_string, test_cases):
     """The main wrapper function for the evaluator."""
