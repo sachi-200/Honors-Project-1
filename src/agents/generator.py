@@ -21,14 +21,12 @@ class GeneratorAgent:
         return resp_json["candidates"][0]["content"]["parts"][0]["text"]
 
     def generate_code(self, prompt: str, history: dict) -> str:
-        # Add history context to prompt
         history_text = ""
         for i, entry in history.items():
             history_text += f"\n--- Iteration {i} ---\n"
             history_text += f"Code:\n{entry['code']}\n"
             history_text += f"Feedback:\n{entry['feedback']}\n"
 
-        # Full set of function signatures for runtime dispatch
         function_signatures = """
             void gemm(const float* A, const float* B, float* C,
                     int M, int N, int K,
