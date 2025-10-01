@@ -3,7 +3,7 @@ import re
 
 def compile_code(code_string, output_filename="workspace/a.out"):
     """Compiles a string of C++ code with OpenMP enabled."""
-    with open("temp.cpp", "w") as f:
+    with open("workspace/temp.cpp", "w") as f:
         f.write(code_string)
 
     compile_command = [
@@ -13,7 +13,7 @@ def compile_code(code_string, output_filename="workspace/a.out"):
         "-Wall",
         "-march=native",
         "-fopenmp",
-        "temp.cpp",
+        "workspace/temp.cpp",
         "-o",
         output_filename,
     ]
