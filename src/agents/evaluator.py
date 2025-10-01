@@ -103,6 +103,8 @@ def evaluate_code(code_string, test_cases):
 
     run_results = run_unit_tests("workspace/a.out", test_cases)
     feedback["tests"] = run_results
+    if not all(test["passed"] for test in run_results):
+        return feedback
 
     performance_metrics = run_and_analyze("workspace/a.out")
     feedback["performance"] = performance_metrics
