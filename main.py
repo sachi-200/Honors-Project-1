@@ -10,7 +10,9 @@ def main():
 
     for i in range(5):
         print(f"--- Iteration {i+1} ---")
+        print("Generating code...")
         generated_code = generator.generate_code(prompt, history)
+        print("Evaluating code...")
         feedback = evaluate_code(generated_code, unit_tests)
         print(feedback)
         history[i] = {"code": generated_code, "feedback": feedback}

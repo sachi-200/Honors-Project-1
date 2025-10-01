@@ -65,6 +65,10 @@ class GeneratorAgent:
             - C++17 or later.
             - Include compile instructions as a comment at the top (e.g., GCC/Clang).
             - No CUDA/ROCm/Triton—**pure CPU** implementation.
+            - Your entire response must be only the raw C++ source code.
+            - DO NOT wrap the code in Markdown code fences (e.g., ```cpp or ```).
+            - Do NOT include any explanations or text outside the code.
+            - The output must be a single, self-contained block of text that can be saved directly to a .cpp file and compiled without any modification.
 
             2) **Includes & Build:**
             - Mandatory includes: <immintrin.h>, <iostream>, <vector>, <cstring>, <chrono>, <random>, <cassert>.
