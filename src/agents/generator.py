@@ -1,4 +1,5 @@
 import requests
+import time
 
 class GeneratorAgent:
     def __init__(self):
@@ -6,7 +7,7 @@ class GeneratorAgent:
         self.MODEL = "gemini-2.5-flash"
         self.URL = f"https://generativelanguage.googleapis.com/v1beta/models/{self.MODEL}:generateContent?key={self.API_KEY}"
 
-    def _ask_gemini(self, prompt: str) -> str:
+    def _ask_gemini(self, prompt: str, retries=3, backoff_factor=0.5) -> str:
         headers = {"Content-Type": "application/json"}
         data = {
             "contents": [
@@ -14,11 +15,18 @@ class GeneratorAgent:
             ]
         }
 
-        response = requests.post(self.URL, headers=headers, json=data)
-        response.raise_for_status()
-        resp_json = response.json()
-
-        return resp_json["candidates"][0]["content"]["parts"][0]["text"]
+        for i in range(retries):
+            try:
+                response = requests.post(self.URL, headers=headers, json=data)
+                response.raise_for_status()
+                resp_json = response.json()
+                return resp_json["candidates"][0]["content"]["parts"][0]["text"]
+            except requests.exceptions.HTTPError as e:
+                if 500 <= e.response.status_code < 600:
+                    print(f"Server error ({e.response.status_code}), retrying in {backoff_factor * (2 ** i)} seconds...")
+                    time.sleep(backoff_factor * (2 ** i))
+                else:
+                    raise
 
     def generate_code(self, history: dict) -> str:
         history_text = ""
