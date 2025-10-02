@@ -118,7 +118,7 @@ def run_and_analyze(executable_path, matrix_size=2048):
     ] + target_command
 
     try:
-        result = subprocess.run(perf_command, capture_output=True, text=True, timeout=300)
+        result = subprocess.run(perf_command, capture_output=True, text=True, timeout=600)
     except FileNotFoundError:
         return {"success": False, "error": "perf tool not found. Please install it to measure performance."}
     except subprocess.TimeoutExpired:
