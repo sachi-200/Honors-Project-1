@@ -46,8 +46,12 @@ def main():
 
     for i in range(10):
         print(f"--- Iteration {i+1} ---")
+
+        last_5_keys = sorted(history.keys())[-5:]
+        recent_history = {k: history[k] for k in last_5_keys}
+
         print("Generating code...")
-        generated_code = generator.generate_code(history, architecture=cpu_model)
+        generated_code = generator.generate_code(recent_history, architecture=cpu_model)
         print("Evaluating code...")
         feedback = evaluate_code(generated_code, matrix_size=int(matrix_size))
         print(json.dumps(feedback, indent=4))
