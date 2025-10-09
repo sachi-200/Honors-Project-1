@@ -3,3 +3,5 @@ workspace/
 src/agents/__pycache__/
 temp.cpp
 benchmarking/mkl_gemm_benchmark
+
+.vscode/
