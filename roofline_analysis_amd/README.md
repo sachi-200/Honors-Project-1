@@ -21,3 +21,8 @@ likwid-bench -t peakflops_sp_avx_fma -W N:100MB
 ```
 
 The MFLOPs/s value is converted to GFLOP/s for the purpose of this project.
+
+## Ryzen 7 6800HS peaks
+
+PEAK_MEM_BW = 28.9 (GB/s measured using Stream benchmark)
+PEAK_COMPUTE = 328.4  (GFLOP/s, float32 single precision, vectorized workload using likwid-bench)

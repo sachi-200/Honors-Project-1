@@ -5,3 +5,5 @@ temp.cpp
 benchmarking/mkl_gemm_benchmark
 
 .vscode/
+
+roofline_analysis/matmul_executable
