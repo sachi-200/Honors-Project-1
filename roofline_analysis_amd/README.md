@@ -264,3 +264,14 @@ Requirements:
 The overall tiling, packing, and loop order (i, k, j) structure should remain the same.
 The innermost computation loop should be rewritten to process 8 single-precision floating-point numbers at a time.
 Use AVX2 intrinsics like _mm256_load_ps, _mm256_broadcast_ss, _mm256_fmadd_ps, and _mm256_store_ps.
+
+### v8: Memory Optimisations + Vectorisation + Loop Unrolling
+
+The vectorization strategy was a huge success. The code is now compute-bound with a performance of 37.2 GFLOP/s, but it is only achieving 11.3% of the theoretical peak compute performance.
+The next optimization goal is to improve the utilization of the compute units by reducing loop overhead and improving instruction-level parallelism.
+Please modify the latest vectorized code to unroll the innermost j loop.
+
+Requirements:
+Keep all previous optimizations (tiling, packing, loop order, vectorization).
+Manually unroll the innermost j loop by a factor of 2 or 4. This means processing two or four __m256 vectors within a single loop iteration.
+This will require using multiple vector registers (e.g., c_vec0, c_vec1) to hold intermediate results.
