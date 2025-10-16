@@ -275,3 +275,19 @@ Requirements:
 Keep all previous optimizations (tiling, packing, loop order, vectorization).
 Manually unroll the innermost j loop by a factor of 2 or 4. This means processing two or four __m256 vectors within a single loop iteration.
 This will require using multiple vector registers (e.g., c_vec0, c_vec1) to hold intermediate results.
+
+### Added Microkernel
+
+The previous version of the code is limited by memory access in practice. The next goal is to drastically improve data reuse within the CPU's fastest caches by implementing a second level of tiling.
+
+Please modify the latest vectorized code to create a GEMM micro-kernel that operates on small register blocks.
+
+Requirements:
+
+Keep all previous optimizations (outer tiling, packing, vectorization, etc.).
+
+Inside the main tile loops, create a new set of loops for a "micro-tile" that will fit in the L1 cache. A common micro-tile size is 8x12 elements.
+
+The innermost part of these loops should perform the vectorized multiply-add operations on this micro-tile, holding accumulators in multiple AVX registers (e.g., c_vec0, c_vec1, c_vec2).
+
+Add comments explaining the structure of the new micro-kernel.

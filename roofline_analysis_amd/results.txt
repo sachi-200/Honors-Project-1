@@ -218,3 +218,84 @@ Your application is: ** Memory-Bound **
 Performance Ceiling: 200.97 GFLOP/s
 Efficiency: 21.0% of ceiling.
 -----------------
+
+_________________________________________________________________________________________________________
+
+
+--- Roofline Analysis ---
+Analyzing: llm_v9_microkernel.cpp for N=1024 on 16 threads
+Hardware Roofs: 328.4 GFLOP/s (Compute), 28.9 GB/s (Memory)
+
+[Step 1/3] Compiling code...
+Successfully compiled to 'matmul_executable'
+
+[Step 2/3] Running program under 'perf stat'...
+'perf stat' execution complete.
+
+[Step 3/3] Calculating metrics and diagnosing...
+
+--- Analysis Results ---
+Execution Time:            0.0276 s
+Cache Misses:              3630843
+Total Data Moved (Est.):   0.2324 GB
+Operational Intensity (I): 9.2415 FLOPs/Byte
+Attained Performance (P):  77.8822 GFLOP/s
+------------------------
+
+--- Diagnosis ---
+Your application is: ** Memory-Bound **
+Performance Ceiling: 267.08 GFLOP/s
+Efficiency: 29.2% of ceiling.
+-----------------
+
+_________________________________________________________________________________________________________
+
+
+--- Roofline Analysis ---
+Analyzing: llm_v10_microkernel.cpp for N=1024 on 16 threads
+Hardware Roofs: 328.4 GFLOP/s (Compute), 28.9 GB/s (Memory)
+
+[Step 1/3] Compiling code...
+Successfully compiled to 'matmul_executable'
+
+[Step 2/3] Running program under 'perf stat'...
+'perf stat' execution complete.
+
+[Step 3/3] Calculating metrics and diagnosing...
+
+--- Analysis Results ---
+Execution Time:            0.0263 s
+Cache Misses:              5856393
+Total Data Moved (Est.):   0.3748 GB
+Operational Intensity (I): 5.7295 FLOPs/Byte
+Attained Performance (P):  81.7844 GFLOP/s
+------------------------
+
+_________________________________________________________________________________________________________
+
+
+--- Roofline Analysis ---
+Analyzing: llm_v11_microkernel.cpp for N=1024 on 16 threads
+Hardware Roofs: 328.4 GFLOP/s (Compute), 28.9 GB/s (Memory)
+
+[Step 1/3] Compiling code...
+Successfully compiled to 'matmul_executable'
+
+[Step 2/3] Running program under 'perf stat'...
+'perf stat' execution complete.
+
+[Step 3/3] Calculating metrics and diagnosing...
+
+--- Analysis Results ---
+Execution Time:            0.0254 s
+Cache Misses:              5231638
+Total Data Moved (Est.):   0.3348 GB
+Operational Intensity (I): 6.4138 FLOPs/Byte
+Attained Performance (P):  84.4805 GFLOP/s
+------------------------
+
+--- Diagnosis ---
+Your application is: ** Memory-Bound **
+Performance Ceiling: 185.36 GFLOP/s
+Efficiency: 45.6% of ceiling.
+-----------------

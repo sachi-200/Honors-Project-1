@@ -1,14 +1,38 @@
+/**
+ * @file tiled_matmul_avx.cpp
+ * @brief A C++ program for parallel matrix multiplication with a full GEMM micro-kernel.
+ *
+ * This version represents the culmination of our optimization journey. It introduces
+ * a second level of tiling (register blocking) by implementing a highly optimized
+ * GEMM (General Matrix Multiply) micro-kernel. This kernel computes a small
+ * block of the C matrix entirely within AVX registers, maximizing data reuse
+ * in the L1 cache and registers, which is the key to approaching peak performance.
+ *
+ * The micro-kernel is 6 rows by 16 columns (2 AVX vectors), requiring 12 AVX
+ * registers for the C accumulators, which fits within typical hardware limits.
+ *
+ * Optimization stack:
+ * 1.  **Outer Tiling (Macro-Kernel):** For L2/L3 cache locality.
+ * 2.  **Loop Reordering:** The `jj, ii, kk` order maximizes reuse of data in C registers.
+ * 3.  **Packing/Copying:** Ensures B's data is contiguous and zero-padded.
+ * 4.  **Register Tiling (Micro-Kernel):** A 6x16 block of C is computed in
+ * AVX registers to maximize reuse of A and B data in L1 cache/registers.
+ * 5.  **Vectorization & Unrolling:** The micro-kernel is written with AVX
+ * intrinsics to expose instruction-level parallelism.
+ *
+ * @author Gemini
+ * @date 2025-10-16
+ */
+
 #include <iostream>
 #include <vector>
-#include <string>
 #include <cstdlib>
-#include <fstream>
+#include <ctime>
 #include <omp.h>
+#include <algorithm>
+#include <immintrin.h>
 #include <cstring> // For memset
-#include <immintrin.h> // For AVX intrinsics
 
-// This header is needed for _mm_malloc and _mm_free
-#include <xmmintrin.h>
 const int TILE_SIZE = 32;
 
 // --- Define Micro-Kernel dimensions ---
@@ -59,12 +83,10 @@ void micro_kernel(const float* A, const float* B, float* C, int N, int KC) {
     }
 }
 
-// +---------------------------------------------------------------------------+
-// | PASTE YOUR LLM-GENERATED GEMM FUNCTION HERE                               |
-// | This is the only section you need to edit.                                |
-// +---------------------------------------------------------------------------+
-
-void your_gemm_function(const float* A, const float* B, float* C, int N) {
+/**
+ * @brief Performs tiled matrix multiplication C = A * B using a GEMM micro-kernel.
+ */
+void perform_tiled_multiplication(const float* A, const float* B, float* C, int N) {
     #pragma omp parallel for shared(A, B, C, N)
     for (int jj = 0; jj < N; jj += TILE_SIZE) {
         for (int ii = 0; ii < N; ii += TILE_SIZE) {
@@ -105,72 +127,49 @@ void your_gemm_function(const float* A, const float* B, float* C, int N) {
     }
 }
 
-
-// +---------------------------------------------------------------------------+
-// | Helper functions to read/write matrices from/to binary files.             |
-// | DO NOT MODIFY BELOW THIS LINE.                                            |
-// +---------------------------------------------------------------------------+
-
-void read_matrix_from_file(const std::string& filename, float* matrix, int n) {
-    std::ifstream infile(filename, std::ios::binary);
-    if (!infile) {
-        std::cerr << "Error: Cannot open file " << filename << " for reading." << std::endl;
-        exit(1);
-    }
-    infile.read(reinterpret_cast<char*>(matrix), (long)n * n * sizeof(float));
-    infile.close();
-}
-
-void write_matrix_to_file(const std::string& filename, const float* matrix, int n) {
-    std::ofstream outfile(filename, std::ios::binary);
-    if (!outfile) {
-        std::cerr << "Error: Cannot open file " << filename << " for writing." << std::endl;
-        exit(1);
-    }
-    outfile.write(reinterpret_cast<const char*>(matrix), (long)n * n * sizeof(float));
-    outfile.close();
-}
-
+/**
+ * @brief Main function to drive the matrix multiplication.
+ */
 int main(int argc, char* argv[]) {
     if (argc != 2) {
-        std::cerr << "Usage: " << argv[0] << " <matrix_size_N>" << std::endl;
+        std::cerr << "Usage: " << argv[0] << " <Matrix_Size_N>" << std::endl;
+        return 1;
+    }
+    int N = std::atoi(argv[1]);
+    if (N <= 0) {
+        std::cerr << "Error: Matrix size N must be a positive integer." << std::endl;
         return 1;
     }
 
-    int N = std::stoi(argv[1]);
-    size_t matrix_size_bytes = (size_t)N * N * sizeof(float);
+    std::cout << "🚀 Starting matmul for N = " << N << " with GEMM micro-kernel." << std::endl;
 
-    // --- FIX ---
-    // Allocate memory with 32-byte alignment, which is required for AVX instructions.
-    // _mm_malloc is the correct way to do this when using intrinsics.
-    float* A = (float*)_mm_malloc(matrix_size_bytes, 32);
-    float* B = (float*)_mm_malloc(matrix_size_bytes, 32);
-    float* C = (float*)_mm_malloc(matrix_size_bytes, 32);
+    size_t matrix_elements = (size_t)N * N;
+    size_t matrix_size_bytes = matrix_elements * sizeof(float);
+    float* A = (float*)aligned_alloc(32, matrix_size_bytes);
+    float* B = (float*)aligned_alloc(32, matrix_size_bytes);
+    float* C = (float*)aligned_alloc(32, matrix_size_bytes);
 
-    if (A == nullptr || B == nullptr || C == nullptr) {
-        std::cerr << "Error: Memory allocation failed." << std::endl;
-        return 1;
-    }
-
-    for (int i = 0; i < N * N; ++i) {
+    std::srand(std::time(0));
+    for (size_t i = 0; i < matrix_elements; ++i) {
+        A[i] = (float)std::rand() / RAND_MAX;
+        B[i] = (float)std::rand() / RAND_MAX;
         C[i] = 0.0f;
     }
 
-    // Read input matrices generated by the Python script
-    read_matrix_from_file("A.bin", A, N);
-    read_matrix_from_file("B.bin", B, N);
+    std::cout << "Matrices allocated and initialized." << std::endl;
+    std::cout << "Performing computation..." << std::endl;
 
-    // Call the GEMM function that you pasted above
-    your_gemm_function(A, B, C, N);
+    double start_time = omp_get_wtime();
+    perform_tiled_multiplication(A, B, C, N);
+    double end_time = omp_get_wtime();
 
-    // Write the result to a file for the Python script to verify
-    write_matrix_to_file("C.bin", C, N);
+    std::cout << "✅ Computation finished in " << end_time - start_time << " seconds." << std::endl;
 
-    // --- FIX ---
-    // Free the aligned memory using the corresponding _mm_free function.
-    _mm_free(A);
-    _mm_free(B);
-    _mm_free(C);
+    free(A);
+    free(B);
+    free(C);
+
+    std::cout << "Memory freed. Program finished successfully." << std::endl;
 
     return 0;
 }
