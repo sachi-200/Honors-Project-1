@@ -1,0 +1,108 @@
+--- Roofline Analysis ---
+Analyzing: llm_v1_tiled.cpp for N=1024 on 16 threads
+Hardware Roofs: 328.4 GFLOP/s (Compute), 28.9 GB/s (Memory)
+
+[Step 1/3] Compiling code...
+Successfully compiled to 'matmul_executable'
+
+[Step 2/3] Running program under 'perf stat'...
+'perf stat' execution complete.
+
+[Step 3/3] Calculating metrics and diagnosing...
+
+--- Analysis Results ---
+Execution Time:            0.1188 s
+Cache Misses:              6686400
+Total Data Moved (Est.):   0.4279 GB
+Operational Intensity (I): 5.0183 FLOPs/Byte
+Attained Performance (P):  18.0706 GFLOP/s
+------------------------
+
+--- Diagnosis ---
+Your application is: ** Memory-Bound **
+Performance Ceiling: 145.03 GFLOP/s
+Efficiency: 12.5% of ceiling.
+
+
+_________________________________________________________________________________________________________
+
+--- Roofline Analysis ---
+Analyzing: llm_v2_tiling_and_prefetching.cpp for N=1024 on 16 threads
+Hardware Roofs: 328.4 GFLOP/s (Compute), 28.9 GB/s (Memory)
+
+[Step 1/3] Compiling code...
+Successfully compiled to 'matmul_executable'
+
+[Step 2/3] Running program under 'perf stat'...
+'perf stat' execution complete.
+
+[Step 3/3] Calculating metrics and diagnosing...
+
+--- Analysis Results ---
+Execution Time:            0.1388 s
+Cache Misses:              12056912
+Total Data Moved (Est.):   0.7716 GB
+Operational Intensity (I): 2.7830 FLOPs/Byte
+Attained Performance (P):  15.4763 GFLOP/s
+------------------------
+
+--- Diagnosis ---
+Your application is: ** Memory-Bound **
+Performance Ceiling: 80.43 GFLOP/s
+Efficiency: 19.2% of ceiling.
+-----------------
+
+_________________________________________________________________________________________________________
+
+--- Roofline Analysis ---
+Analyzing: llm_v3_tiling_and_prefetching.cpp for N=1024 on 16 threads
+Hardware Roofs: 328.4 GFLOP/s (Compute), 28.9 GB/s (Memory)
+
+[Step 1/3] Compiling code...
+Successfully compiled to 'matmul_executable'
+
+[Step 2/3] Running program under 'perf stat'...
+'perf stat' execution complete.
+
+[Step 3/3] Calculating metrics and diagnosing...
+
+--- Analysis Results ---
+Execution Time:            0.1672 s
+Cache Misses:              8039387
+Total Data Moved (Est.):   0.5145 GB
+Operational Intensity (I): 4.1738 FLOPs/Byte
+Attained Performance (P):  12.8413 GFLOP/s
+------------------------
+
+--- Diagnosis ---
+Your application is: ** Memory-Bound **
+Performance Ceiling: 120.62 GFLOP/s
+Efficiency: 10.6% of ceiling.
+-----------------
+
+_________________________________________________________________________________________________________
+
+Analyzing: llm_v4_tiling_and_packing.cpp for N=1024 on 16 threads
+Hardware Roofs: 328.4 GFLOP/s (Compute), 28.9 GB/s (Memory)
+
+[Step 1/3] Compiling code...
+Successfully compiled to 'matmul_executable'
+
+[Step 2/3] Running program under 'perf stat'...
+'perf stat' execution complete.
+
+[Step 3/3] Calculating metrics and diagnosing...
+
+--- Analysis Results ---
+Execution Time:            0.1149 s
+Cache Misses:              4956195
+Total Data Moved (Est.):   0.3172 GB
+Operational Intensity (I): 6.7702 FLOPs/Byte
+Attained Performance (P):  18.6858 GFLOP/s
+------------------------
+
+--- Diagnosis ---
+Your application is: ** Memory-Bound **
+Performance Ceiling: 195.66 GFLOP/s
+Efficiency: 9.6% of ceiling.
+-----------------
