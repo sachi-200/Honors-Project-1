@@ -130,7 +130,7 @@ def main(args):
 
     print("\n[Step 1/3] Compiling code...")
     compiler = "g++" if c_program_path.endswith(".cpp") else "gcc"
-    compile_command = [compiler, "-O3", "-fopenmp", "-o", executable_name, c_program_path]
+    compile_command = [compiler, "-O3", "-fopenmp", "-mfma", "-mavx2", "-o", executable_name, c_program_path]
     run_command(compile_command)
     print(f"Successfully compiled to '{executable_name}'")
 

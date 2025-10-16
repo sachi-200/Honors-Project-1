@@ -242,3 +242,25 @@ Add __builtin_prefetch instructions to fetch the data needed for future tile com
 The next tile of Matrix A.
 The next tile of Matrix B (before it gets packed).
 Add comments explaining the logic of where the prefetch instructions are placed and what data they are targeting.
+
+### v6: Tiling + Packing + Prefetching + Loop Reordering
+
+The combination of packing and prefetching was a great success, increasing performance by over 9.5%. The Roofline analysis shows the code is still memory-bound.
+The next optimization goal is to improve temporal locality for the tiles of Matrix A.
+Please modify the latest version of the code by reordering the three outer tile loops.
+
+Requirements:
+Change the tile loop order from the current i, j, k to i, k, j.
+Ensure the packing and prefetching logic is adjusted correctly to work with this new loop order.
+Add comments explaining why this loop order is beneficial for caching the tiles of Matrix A.
+
+### v7: Tiling + Packing + Prefetching + Loop Reordering (Memory Optimisations) + Vectorisation
+
+Our series of memory optimizations has been successful, but the performance is now limited by the scalar nature of the computation, as indicated by a low efficiency of 9.6% on the Roofline plot.
+The next goal is to dramatically improve compute efficiency by using SIMD vectorization.
+Please take the latest and best-performing version of the code and modify the innermost loop to use AVX2 compiler intrinsics.
+
+Requirements:
+The overall tiling, packing, and loop order (i, k, j) structure should remain the same.
+The innermost computation loop should be rewritten to process 8 single-precision floating-point numbers at a time.
+Use AVX2 intrinsics like _mm256_load_ps, _mm256_broadcast_ss, _mm256_fmadd_ps, and _mm256_store_ps.

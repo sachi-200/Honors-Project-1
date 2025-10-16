@@ -134,3 +134,33 @@ Your application is: ** Memory-Bound **
 Performance Ceiling: 223.10 GFLOP/s
 Efficiency: 9.2% of ceiling.
 -----------------
+
+_________________________________________________________________________________________________________
+
+--- Roofline Analysis ---
+Analyzing: llm_v6_tile_pref_pack_reord.cpp for N=1024 on 16 threads
+Hardware Roofs: 328.4 GFLOP/s (Compute), 28.9 GB/s (Memory)
+
+[Step 1/3] Compiling code...
+Successfully compiled to 'matmul_executable'
+
+[Step 2/3] Running program under 'perf stat'...
+'perf stat' execution complete.
+
+[Step 3/3] Calculating metrics and diagnosing...
+
+--- Analysis Results ---
+Execution Time:            0.1016 s
+Cache Misses:              4396049
+Total Data Moved (Est.):   0.2813 GB
+Operational Intensity (I): 7.6329 FLOPs/Byte
+Attained Performance (P):  21.1336 GFLOP/s
+------------------------
+
+--- Diagnosis ---
+Your application is: ** Memory-Bound **
+Performance Ceiling: 220.59 GFLOP/s
+Efficiency: 9.6% of ceiling.
+-----------------
+
+_________________________________________________________________________________________________________
