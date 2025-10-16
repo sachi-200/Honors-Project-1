@@ -231,3 +231,14 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 ```
+
+### v5: Tiling + Packing + Prefetching
+
+The "copy optimization" or "packing" strategy was a success. It reduced cache misses by 26% and increased operational intensity to 6.77 FLOPs/Byte. The code is still memory-bound. The next goal is to hide the memory latency that remains. Please modify the latest version of the code (the one that includes the packing of matrix B) to add software prefetching.
+
+Requirements:
+Keep the existing tiling and packing logic for matrix B.
+Add __builtin_prefetch instructions to fetch the data needed for future tile computations. A good strategy would be to prefetch:
+The next tile of Matrix A.
+The next tile of Matrix B (before it gets packed).
+Add comments explaining the logic of where the prefetch instructions are placed and what data they are targeting.
