@@ -42,7 +42,7 @@ def main():
         max_gflops = 0.0
         current_run_best_filepath = None
 
-        for i in range(10): 
+        for i in range(10):
             print(f"--- Iteration {i+1} (matrix {matrix_size}) ---")
 
             last_5_keys = sorted(history.keys())[-5:]
@@ -51,7 +51,7 @@ def main():
             print("Generating code...")
             generated_code = generator.generate_code(recent_history, architecture=cpu_model)
             print("Evaluating code...")
-            feedback = evaluate_code(generated_code, matrix_size=matrix_size)
+            feedback = evaluate_code(generated_code, matrix_size=matrix_size, system_type=cpu_arch)
             print(json.dumps(feedback, indent=4))
             history[(matrix_size, i)] = {"code": generated_code, "feedback": feedback}
 

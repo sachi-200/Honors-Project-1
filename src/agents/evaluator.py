@@ -3,6 +3,102 @@ import re
 import os
 import numpy as np
 import random
+import csv
+
+def compute_roofline_metrics(performance_metrics, matrix_size):
+    """Computes Roofline model metrics based on performance data."""
+    CACHE_LINE_SIZE = 64
+    peak_compute = 328.4 # GFLOP/s
+    peak_memory = 28.9 # GB/s
+
+    if not performance_metrics.get("success"):
+        return {"error": "Performance metrics not available for Roofline analysis."}
+
+    cache_misses = performance_metrics.get("cache-misses")
+    runtime = performance_metrics.get("execution_time_seconds")
+    gflops = performance_metrics.get("gflops")
+
+    if cache_misses is None or runtime is None or gflops is None:
+        return {"error": "Insufficient data for Roofline analysis."}
+
+    total_flops = 2 * (matrix_size ** 3)
+    total_bytes_moved = cache_misses * CACHE_LINE_SIZE if cache_misses > 0 else 1
+    operational_intensity = total_flops / total_bytes_moved
+    attained_perf = gflops
+
+    ridge_point = peak_compute / peak_memory
+    if operational_intensity < ridge_point:
+        bound_by = "Memory Bound"
+        max_perf = operational_intensity * peak_memory
+    else:
+        bound_by = "Compute Bound"
+        max_perf = peak_compute
+
+    efficiency = (attained_perf / max_perf) * 100 if max_perf > 0 else 0.0
+
+    return {
+        "success": True,
+        "runtime_seconds": runtime,
+        "cache_misses": cache_misses,
+        "data_moved_GB": total_bytes_moved / 1e9,
+        "operational_intensity": operational_intensity,
+        "attained_performance_GFLOPS": attained_perf,
+        "ridge_point": ridge_point,
+        "bound_by": bound_by,
+        "max_performance_GFLOPS": max_perf,
+        "efficiency_percent": efficiency,
+        "peak_compute_GFLOPS": peak_compute,
+        "peak_memory_GBPS": peak_memory,
+    }
+
+def run_intel_advisor_roofline(executable_path):
+    """Runs Intel Advisor Roofline analysis on the given executable."""
+    project_dir = "./advisor_project"
+    csv_output = os.path.join(project_dir, "roofline_report.csv")
+    os.makedirs(project_dir, exist_ok=True)
+
+    print("\tRunning Intel Advisor Roofline analysis")
+    try:
+        subprocess.run(
+            ["advisor", "--report=roofline",
+             f"--project-dir={project_dir}",
+             "--format=csv",
+             f"--report-output={csv_output}"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as e:
+        return {"error": f"Intel Advisor analysis failed: {e.stderr}"}
+
+    if not os.path.exists(csv_output):
+        return {"success": False, "error": "Roofline report CSV not found."}
+
+    data = []
+    with open(csv_output, newline='') as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            data.append(row)
+
+    if not data:
+        return {"success": False, "error": "No data found in Roofline report."}
+
+    try:
+        row = data[0]
+        attained_perf = float(row.get("GFLOPS", 0.0))
+        operational_intensity = float(row.get("Operational Intensity (FLOPs/Byte)", 0.0))
+        bound_type = row.get("Roofline Limit Type", "Unknown")
+
+        result = {
+            "success": True,
+            "attained_performance_GFLOPS": attained_perf,
+            "operational_intensity": operational_intensity,
+            "bound_by": bound_type,
+            "source": "Intel Advisor",
+        }
+        return result
+    except Exception as e:
+        return {"success": False, "error": f"Error parsing Roofline report: {e}"}
 
 def compile_code(code_string, output_filename="workspace/a.out"):
     """Compiles a string of C++ code with OpenMP enabled."""
@@ -151,7 +247,7 @@ def run_and_analyze(executable_path, matrix_size=2048):
 
     return metrics
 
-def evaluate_code(code_string, matrix_size=2048):
+def evaluate_code(code_string, matrix_size, system_type):
     """The main wrapper function for the evaluator."""
     feedback = {}
 
@@ -170,5 +266,13 @@ def evaluate_code(code_string, matrix_size=2048):
     print("\t 3) Analyzing performance")
     performance_metrics = run_and_analyze("workspace/a.out", matrix_size=matrix_size)
     feedback["performance"] = performance_metrics
+
+    if system_type.lower() == "intel":
+        print("\t 4) Performing Roofline Analysis using Intel Advisor")
+        roofline_results = run_intel_advisor_roofline("workspace/a.out")
+    else:
+        print("\t 4) Performing Roofline Analysis using perf data")
+        roofline_results = compute_roofline_metrics(performance_metrics, matrix_size)
+    feedback["roofline"] = roofline_results
 
     return feedback
