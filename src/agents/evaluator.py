@@ -5,7 +5,20 @@ import numpy as np
 import random
 import csv
 
-def compute_roofline_metrics(performance_metrics, matrix_size):
+def get_cpu_architecture():
+    """Detects CPU architecture (AMD or Intel)."""
+    try:
+        with open("/proc/cpuinfo", "r") as f:
+            cpuinfo = f.read().lower()
+            if "amd" in cpuinfo or "authenticamd" in cpuinfo:
+                return "amd"
+            elif "intel" in cpuinfo or "genuineintel" in cpuinfo:
+                return "intel"
+    except:
+        pass
+    return "unknown"
+
+def compute_roofline_metrics(performance_metrics, matrix_size, arch="unknown"):
     """Computes Roofline model metrics based on performance data."""
     CACHE_LINE_SIZE = 64
     peak_compute = 328.4 # GFLOP/s
@@ -14,17 +27,55 @@ def compute_roofline_metrics(performance_metrics, matrix_size):
     if not performance_metrics.get("success"):
         return {"error": "Performance metrics not available for Roofline analysis."}
 
-    cache_misses = performance_metrics.get("cache-misses")
     runtime = performance_metrics.get("execution_time_seconds")
     gflops = performance_metrics.get("gflops")
 
-    if cache_misses is None or runtime is None or gflops is None:
+    if runtime is None or gflops is None:
         return {"error": "Insufficient data for Roofline analysis."}
 
+    # Use architecture-specific counters for DRAM traffic
+    if arch == "amd":
+        # AMD: Use ls_*_fills_from_sys counters for actual DRAM traffic
+        dram_local = performance_metrics.get("any_mem_io_local", 0) or 0
+        dram_remote = performance_metrics.get("any_mem_io_remote", 0) or 0
+        total_dram_fills = dram_local + dram_remote
+
+        dmnd_local = performance_metrics.get("dmnd_mem_io_local", 0) or 0
+        dmnd_remote = performance_metrics.get("dmnd_mem_io_remote", 0) or 0
+        demand_dram_fills = dmnd_local + dmnd_remote
+
+        if total_dram_fills == 0:
+            return {"error": "No DRAM traffic detected. Data likely served from cache."}
+
+        total_bytes_moved = total_dram_fills * CACHE_LINE_SIZE
+        data_source = "AMD DRAM fills"
+
+    elif arch == "intel":
+        # Intel: Use LLC-load-misses if available, fallback to cache-misses
+        llc_misses = performance_metrics.get("LLC-load-misses")
+        if llc_misses is not None and llc_misses > 0:
+            total_bytes_moved = llc_misses * CACHE_LINE_SIZE
+            data_source = "Intel LLC misses"
+        else:
+            cache_misses = performance_metrics.get("cache-misses")
+            if cache_misses is None or cache_misses == 0:
+                cache_misses = 1
+            total_bytes_moved = cache_misses * CACHE_LINE_SIZE
+            data_source = "Generic cache misses (less accurate)"
+    else:
+        # Unknown architecture: fallback to cache-misses
+        cache_misses = performance_metrics.get("cache-misses")
+        if cache_misses is None or cache_misses == 0:
+            cache_misses = 1
+        total_bytes_moved = cache_misses * CACHE_LINE_SIZE
+        data_source = "Generic cache misses (less accurate)"
+
     total_flops = 2 * (matrix_size ** 3)
-    total_bytes_moved = cache_misses * CACHE_LINE_SIZE if cache_misses > 0 else 1
     operational_intensity = total_flops / total_bytes_moved
     attained_perf = gflops
+
+    # Measured memory bandwidth
+    memory_bandwidth_measured = (total_bytes_moved / 1e9) / runtime if runtime > 0 else 0
 
     ridge_point = peak_compute / peak_memory
     if operational_intensity < ridge_point:
@@ -36,11 +87,11 @@ def compute_roofline_metrics(performance_metrics, matrix_size):
 
     efficiency = (attained_perf / max_perf) * 100 if max_perf > 0 else 0.0
 
-    return {
+    result = {
         "success": True,
         "runtime_seconds": runtime,
-        "cache_misses": cache_misses,
         "data_moved_GB": total_bytes_moved / 1e9,
+        "memory_bandwidth_measured_GBPS": memory_bandwidth_measured,
         "operational_intensity": operational_intensity,
         "attained_performance_GFLOPS": attained_perf,
         "ridge_point": ridge_point,
@@ -49,7 +100,27 @@ def compute_roofline_metrics(performance_metrics, matrix_size):
         "efficiency_percent": efficiency,
         "peak_compute_GFLOPS": peak_compute,
         "peak_memory_GBPS": peak_memory,
+        "data_source": data_source,
+        "architecture": arch,
     }
+
+    # Add AMD-specific metrics if available
+    if arch == "amd" and total_dram_fills > 0:
+        prefetch_fills = total_dram_fills - demand_dram_fills
+        result.update({
+            "dram_fills_total": total_dram_fills,
+            "dram_fills_local": dram_local,
+            "dram_fills_remote": dram_remote,
+            "dram_fills_demand": demand_dram_fills,
+            "dram_fills_prefetch": prefetch_fills,
+            "prefetch_percent": (prefetch_fills / total_dram_fills * 100) if total_dram_fills > 0 else 0,
+        })
+    elif arch == "intel":
+        llc_misses = performance_metrics.get("LLC-load-misses")
+        if llc_misses is not None:
+            result["llc_load_misses"] = llc_misses
+
+    return result
 
 def run_intel_advisor_roofline(executable_path):
     """Runs Intel Advisor Roofline analysis on the given executable."""
@@ -193,8 +264,12 @@ def run_unit_tests(executable_path):
 
     return results
 
-def run_and_analyze(executable_path, matrix_size=2048):
+def run_and_analyze(executable_path, matrix_size=2048, arch=None):
     """Runs the code and extracts performance metrics."""
+    if arch is None:
+        arch = get_cpu_architecture()
+
+    # Base events available on all systems
     events = [
         "cycles",
         "instructions",
@@ -203,6 +278,32 @@ def run_and_analyze(executable_path, matrix_size=2048):
         "branches",
         "branch-misses",
     ]
+
+    # Add architecture-specific events
+    if arch == "amd":
+        # AMD-specific counters for accurate DRAM traffic measurement
+        amd_events = [
+            "L1-dcache-loads",
+            "L1-dcache-load-misses",
+            # Demand fills from DRAM (excludes prefetch)
+            "ls_dmnd_fills_from_sys.mem_io_local",
+            "ls_dmnd_fills_from_sys.mem_io_remote",
+            # All fills from DRAM (includes prefetch)
+            "ls_any_fills_from_sys.mem_io_local",
+            "ls_any_fills_from_sys.mem_io_remote",
+            # Cache hierarchy fills for analysis
+            "ls_dmnd_fills_from_sys.lcl_l2",
+            "ls_dmnd_fills_from_sys.int_cache",
+        ]
+        events.extend(amd_events)
+    elif arch == "intel":
+        # Intel-specific counters
+        intel_events = [
+            "LLC-load-misses",  # L3 misses - goes to DRAM
+            "LLC-loads",        # L3 accesses
+        ]
+        events.extend(intel_events)
+
     perf_args = [str(matrix_size)] * 3
     target_command = [f"./{executable_path}"] + perf_args
 
@@ -224,16 +325,32 @@ def run_and_analyze(executable_path, matrix_size=2048):
         return {"success": False, "error": result.stderr}
 
     output = result.stderr
-    metrics = {"success": True, "args": perf_args}
+    metrics = {"success": True, "args": perf_args, "architecture": arch}
 
+    # Parse all events
     for event in events:
+        # Handle dots in event names for AMD counters
+        event_pattern = event.replace(".", r"\.")
         pattern = rf"^\s*([\d,]+)\s+{re.escape(event)}"
         match = re.search(pattern, output, re.MULTILINE)
         if match:
             value = int(match.group(1).replace(",", ""))
-            metrics[event] = value
+            # Store with simplified key name for AMD events
+            if "ls_dmnd_fills_from_sys." in event:
+                key = event.replace("ls_dmnd_fills_from_sys.", "dmnd_")
+            elif "ls_any_fills_from_sys." in event:
+                key = event.replace("ls_any_fills_from_sys.", "any_")
+            else:
+                key = event
+            metrics[key] = value
         else:
-            metrics[event] = None
+            if "ls_dmnd_fills_from_sys." in event:
+                key = event.replace("ls_dmnd_fills_from_sys.", "dmnd_")
+            elif "ls_any_fills_from_sys." in event:
+                key = event.replace("ls_any_fills_from_sys.", "any_")
+            else:
+                key = event
+            metrics[key] = None
 
     time_match = re.search(r"^\s*([\d.]+)\s+seconds time elapsed", output, re.MULTILINE)
     if time_match:
@@ -247,9 +364,39 @@ def run_and_analyze(executable_path, matrix_size=2048):
 
     return metrics
 
+def get_cache_hierarchy_analysis(performance_metrics, arch):
+    """
+    Analyze cache hierarchy to understand data flow.
+    AMD-specific function.
+    """
+    if arch != "amd":
+        return {"error": "Cache hierarchy analysis only available for AMD"}
+
+    l2_fills = performance_metrics.get("dmnd_lcl_l2", 0) or 0
+    l3_fills = performance_metrics.get("dmnd_int_cache", 0) or 0
+    dram_local = performance_metrics.get("dmnd_mem_io_local", 0) or 0
+    dram_remote = performance_metrics.get("dmnd_mem_io_remote", 0) or 0
+    dram_fills = dram_local + dram_remote
+
+    total_fills = l2_fills + l3_fills + dram_fills
+
+    if total_fills == 0:
+        return {"error": "No cache fill data available"}
+
+    return {
+        "l2_fill_percent": (l2_fills / total_fills) * 100,
+        "l3_fill_percent": (l3_fills / total_fills) * 100,
+        "dram_fill_percent": (dram_fills / total_fills) * 100,
+        "cache_hit_rate": ((l2_fills + l3_fills) / total_fills) * 100,
+    }
+
 def evaluate_code(code_string, matrix_size, system_type):
     """The main wrapper function for the evaluator."""
     feedback = {}
+
+    # Detect CPU architecture
+    arch = get_cpu_architecture()
+    feedback["detected_architecture"] = arch
 
     print("\t 1) Compiling code")
     compile_result = compile_code(code_string)
@@ -263,16 +410,23 @@ def evaluate_code(code_string, matrix_size, system_type):
     if not all(test["passed"] for test in run_results):
         return feedback
 
-    print("\t 3) Analyzing performance")
-    performance_metrics = run_and_analyze("workspace/a.out", matrix_size=matrix_size)
+    print(f"\t 3) Analyzing performance (Architecture: {arch.upper()})")
+    performance_metrics = run_and_analyze("workspace/a.out", matrix_size=matrix_size, arch=arch)
     feedback["performance"] = performance_metrics
 
-    if system_type.lower() == "intel":
+    if system_type.lower() == "intel" and arch == "intel":
         print("\t 4) Performing Roofline Analysis using Intel Advisor")
         roofline_results = run_intel_advisor_roofline("workspace/a.out")
     else:
-        print("\t 4) Performing Roofline Analysis using perf data")
-        roofline_results = compute_roofline_metrics(performance_metrics, matrix_size)
+        print(f"\t 4) Performing Roofline Analysis using perf data ({arch.upper()} counters)")
+        roofline_results = compute_roofline_metrics(performance_metrics, matrix_size, arch=arch)
+
     feedback["roofline"] = roofline_results
+
+    # Add cache hierarchy analysis for AMD
+    if arch == "amd" and performance_metrics.get("success"):
+        cache_analysis = get_cache_hierarchy_analysis(performance_metrics, arch)
+        if not cache_analysis.get("error"):
+            feedback["cache_hierarchy"] = cache_analysis
 
     return feedback
