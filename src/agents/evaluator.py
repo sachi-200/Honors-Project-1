@@ -5,6 +5,25 @@ import numpy as np
 import random
 import csv
 
+def get_human_feedback():
+    """Prompts the user for multi-line feedback until 'done' is entered."""
+    print("\nWAITING FOR HUMAN FEEDBACK")
+    print("Please enter your feedback for the generator.")
+    print("Type 'done' on a new, empty line when you are finished.")
+
+    lines = []
+    while True:
+        try:
+            line = input()
+            if line.strip().lower() == "done":
+                break
+            lines.append(line)
+        except EOFError:
+            break
+
+    print("--- ✅ Feedback captured ---")
+    return "\n".join(lines)
+
 def get_cpu_architecture():
     """Detects CPU architecture (AMD or Intel)."""
     try:
@@ -122,56 +141,52 @@ def compute_roofline_metrics(performance_metrics, matrix_size, arch="unknown"):
 
     return result
 
-def run_intel_advisor_roofline(executable_path):
-    """Runs Intel Advisor Roofline analysis on the given executable."""
+def run_intel_advisor_roofline(executable_path, matrix_size):
+    """
+    Runs Intel Advisor collection and launches the GUI.
+    Does NOT wait for human feedback.
+    """
     project_dir = "./advisor_project"
-    csv_output = os.path.join(project_dir, "roofline_report.csv")
     os.makedirs(project_dir, exist_ok=True)
 
-    print("\tRunning Intel Advisor Roofline analysis")
+    print("\t\tRunning Intel Advisor collection... (this may take a while)")
+    advisor_args = [str(matrix_size)] * 3
+    target_command = [f"./{executable_path}"] + advisor_args
+
+    collect_command = [
+        "advisor", "--collect=roofline", f"--project-dir={project_dir}",
+        "--",
+    ] + target_command
+
     try:
         subprocess.run(
-            ["advisor", "--report=roofline",
-             f"--project-dir={project_dir}",
-             "--format=csv",
-             f"--report-output={csv_output}"],
-            check=True,
-            capture_output=True,
-            text=True,
+            collect_command, check=True, capture_output=True, text=True, timeout=1200
         )
+    except FileNotFoundError:
+        return {"success": False, "error": "Intel Advisor (advisor) not found in PATH."}
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "Intel Advisor collection timed out."}
     except subprocess.CalledProcessError as e:
-        return {"error": f"Intel Advisor analysis failed: {e.stderr}"}
-
-    if not os.path.exists(csv_output):
-        return {"success": False, "error": "Roofline report CSV not found."}
-
-    data = []
-    with open(csv_output, newline='') as csvfile:
-        reader = csv.DictReader(csvfile)
-        for row in reader:
-            data.append(row)
-
-    if not data:
-        return {"success": False, "error": "No data found in Roofline report."}
-
-    try:
-        row = data[0]
-        attained_perf = float(row.get("GFLOPS", 0.0))
-        operational_intensity = float(row.get("Operational Intensity (FLOPs/Byte)", 0.0))
-        bound_type = row.get("Roofline Limit Type", "Unknown")
-
-        result = {
-            "success": True,
-            "attained_performance_GFLOPS": attained_perf,
-            "operational_intensity": operational_intensity,
-            "bound_by": bound_type,
-            "source": "Intel Advisor",
-        }
-        return result
+        return {"success": False, "error": f"Advisor collection failed: {e.stderr}"}
     except Exception as e:
-        return {"success": False, "error": f"Error parsing Roofline report: {e}"}
+        return {"success": False, "error": f"An unexpected error occurred during Advisor collection: {e}"}
 
-def compile_code(code_string, output_filename="workspace/a.out"):
+    print("\t\tLaunching Intel Advisor GUI...")
+    try:
+        subprocess.Popen(["advisor-gui", project_dir])
+    except FileNotFoundError:
+        print("Warning: 'advisor-gui' not found. Please open the project manually:")
+        print(f"advisor-gui {project_dir}")
+    except Exception as e:
+        print(f"Warning: Could not launch GUI: {e}")
+
+    return {
+        "success": True,
+        "project_dir": os.path.abspath(project_dir),
+        "source": "Intel Advisor (Manual HITL)",
+    }
+
+def compile_code(code_string, output_filename="workspace/a.out", debug=False):
     """Compiles a string of C++ code with OpenMP enabled."""
     os.makedirs("workspace", exist_ok=True)
     with open("workspace/temp.cpp", "w") as f:
@@ -184,10 +199,16 @@ def compile_code(code_string, output_filename="workspace/a.out"):
         "-Wall",
         "-march=native",
         "-fopenmp",
+    ]
+
+    if debug:
+        compile_command.append("-g")
+
+    compile_command.extend([
         "workspace/temp.cpp",
         "-o",
         output_filename,
-    ]
+    ])
 
     result = subprocess.run(
         compile_command, capture_output=True, text=True
@@ -398,8 +419,10 @@ def evaluate_code(code_string, matrix_size, system_type):
     arch = get_cpu_architecture()
     feedback["detected_architecture"] = arch
 
+    is_intel = system_type.lower() == "intel" and arch == "intel"
+
     print("\t 1) Compiling code")
-    compile_result = compile_code(code_string)
+    compile_result = compile_code(code_string, debug=is_intel)
     feedback["compilation"] = compile_result
     if not compile_result["success"]:
         return feedback
@@ -414,9 +437,9 @@ def evaluate_code(code_string, matrix_size, system_type):
     performance_metrics = run_and_analyze("workspace/a.out", matrix_size=matrix_size, arch=arch)
     feedback["performance"] = performance_metrics
 
-    if system_type.lower() == "intel" and arch == "intel":
+    if is_intel:
         print("\t 4) Performing Roofline Analysis using Intel Advisor")
-        roofline_results = run_intel_advisor_roofline("workspace/a.out")
+        roofline_results = run_intel_advisor_roofline("workspace/a.out", matrix_size)
     else:
         print(f"\t 4) Performing Roofline Analysis using perf data ({arch.upper()} counters)")
         roofline_results = compute_roofline_metrics(performance_metrics, matrix_size, arch=arch)
@@ -428,5 +451,7 @@ def evaluate_code(code_string, matrix_size, system_type):
         cache_analysis = get_cache_hierarchy_analysis(performance_metrics, arch)
         if not cache_analysis.get("error"):
             feedback["cache_hierarchy"] = cache_analysis
+
+    feedback["human_feedback"] = get_human_feedback()
 
     return feedback
