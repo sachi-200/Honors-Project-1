@@ -102,7 +102,7 @@ class GeneratorAgent:
             - The output must be a single, self-contained block of text that can be saved directly to a .cpp file and compiled without any modification.
 
             2) **Includes & Build:**
-            - Mandatory includes: <immintrin.h>, <iostream>, <vector>, <cstring>, <chrono>, <random>, <cassert>.
+            - Mandatory includes: <immintrin.h>, <iostream>, <vector>, <cstring>, <chrono>, <random>, <cassert>, <fstream>, <string>, <iomanip>.
             - If using OpenMP: also include <omp.h> and guard logic if OpenMP is not available.
             - Provide example compile commands for the *specific optimized kernel* being generated.
                 - If generating `gemm_avx512`: `g++ -O3 -march=x86-64-v3 -mavx512f -mfma -fopenmp gemm.cpp -o gemm`
@@ -172,6 +172,35 @@ class GeneratorAgent:
             - Comment the intrinsics code (register layout, accumulation pattern).
             - Mention cache levels (L1/L2/L3) and how tiles aim to fit/reuse.
 
+            **Roofline Analysis & Optimization Strategies:**
+            The 'history' section may contain feedback indicating whether the previous attempt was **Compute-Bound** or **Memory-Bound**.
+            Use this information to select appropriate optimizations for the next iteration.
+
+            **If Memory-Bound (Performance limited by memory bandwidth):**
+            * **Improve Data Locality:**
+                * **Tiling/Blocking:** Adjust BM, BN, BK. Ensure tiles (especially for B and A) fit in L1/L2 cache.
+                * **Packing (Memory Reorganization):** Pack micro-panels of B (and possibly A) into contiguous buffers to linearize memory access within the micro-kernel. This is a very common and effective technique.
+                * **Loop Order:** Experiment with loop orders (e.g., M-N-K, M-K-N, K-M-N) to find the one that maximizes reuse.
+            * **Reduce Memory Traffic:**
+                * Avoid unnecessary loads/stores.
+                * Ensure efficient use of registers to hold accumulators.
+            * **Prefetching:**
+                * Use `_mm_prefetch` strategically for data that will be needed soon (e.g., next block of A or B). Be careful not to prefetch too aggressively or too early/late.
+            * **Parallelism:**
+                * Ensure OpenMP schedules (like `static`) don't cause false sharing or poor NUMA locality.
+
+            **If Compute-Bound (Performance limited by CPU execution units):**
+            * **Increase Arithmetic Intensity (SIMD):**
+                * **Wider Vectors:** Use the widest available SIMD (AVX-512 > AVX2 > AVX).
+                * **Register Blocking (Micro-kernel):** Increase the number of accumulators held in SIMD registers (e.g., a 16x8 or 8x8 block of C processed at once). This increases instruction-level parallelism (ILP) and hides latency.
+                * **FMA (Fused Multiply-Add):** Ensure `_mm_fmadd_ps` (or `_mm512_fmadd_ps`) is being used for the core `C += A*B` operation.
+            * **Instruction-Level Parallelism (ILP):**
+                * **Unrolling:** Unroll the innermost loop (K-loop, `UNROLL_K`) to reduce loop overhead and expose more instructions to the scheduler.
+                * **Software Pipelining:** Structure the micro-kernel to overlap loads, computations, and stores.
+            * **Reduce Overheads:**
+                * Minimize loop branching.
+                * Efficient tail/edge handling.
+
             **Performance Hints (Follow where feasible):**
             - Pack micro-panels of B for better locality; consider packing A or both if time permits.
             - Favor **register blocking** for the inner micro-kernel (e.g., 8×8 or 16×8 accumulators for AVX-512/AVX2).
@@ -185,8 +214,14 @@ class GeneratorAgent:
             4) All parameters required by the signatures are used meaningfully.
             5) Tails (non-multiple-of-vector/tile sizes) are correct and tested.
             6) The code compiles on GCC/Clang with the provided commands.
+            7) The `main()` function correctly parses `--dump-matrices` and implements the two distinct logic paths (Test Mode vs. Perf Mode).
 
-            Here is the history of previous attempts and feedback:
+            Here is the history of previous attempts and feedback.
+            This history may contain:
+            1.  **Automated Feedback:** Including correctness results and Roofline Analysis (e.g., "Compute-Bound" or "Memory-Bound").
+            2.  **Human Feedback:** Subjective suggestions for improvement, even if the code passed all tests.
+
+            You **MUST** consider all feedback to guide your next implementation.
             {history_text}
             Now, based on this history, generate an improved version of the code.
         """
