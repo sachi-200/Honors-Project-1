@@ -1,9 +1,10 @@
 import requests
 import time
+from src.tools.env_helper import load_api_key
 
 class GeneratorAgent:
     def __init__(self):
-        self.API_KEY = "AIzaSyAxtd0l68vktXBcKmGIZV8Vk-83vsqALd8"
+        self.API_KEY = load_api_key()
         self.MODEL = "gemini-2.5-flash"
         self.URL = f"https://generativelanguage.googleapis.com/v1beta/models/{self.MODEL}:generateContent?key={self.API_KEY}"
 
