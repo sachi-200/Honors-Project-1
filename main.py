@@ -1,9 +1,47 @@
 import os
 import re
 import json
+from typing import Optional
 from src.agents.evaluator import evaluate_code
 from src.agents.generator import GeneratorAgent
 
+
+def _human_in_loop_from_config(config_path: str = "config.yaml") -> bool:
+    """Read a config and return True if human_in_the_loop is true."""
+    try:
+        with open(config_path, "r", encoding="utf-8") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("human_in_the_loop"):
+                    parts = line.split("=", 1)
+                    if len(parts) != 2:
+                        return False
+                    val = parts[1].strip()
+                    return val.lower() in ("true", "1", "yes", "y")
+    except FileNotFoundError:
+        return False
+    return False
+
+def get_human_feedback():
+    """Prompts the user for multi-line feedback until 'done' is entered."""
+    print("\nWAITING FOR HUMAN FEEDBACK")
+    print("Please enter your feedback for the generator.")
+    print("Type 'done' on a new, empty line when you are finished.")
+
+    lines = []
+    while True:
+        try:
+            line = input()
+            if line.strip().lower() == "done":
+                break
+            lines.append(line)
+        except EOFError:
+            break
+
+    print("--- ✅ Feedback captured ---")
+    return "\n".join(lines)
 
 def main():
     cpu_arch = ""
@@ -22,6 +60,8 @@ def main():
 
     generator = GeneratorAgent()
     history = {}
+
+    human_in_loop = _human_in_loop_from_config()
 
     for matrix_size in matrix_sizes:
         print(f"\n===== Running benchmarks for matrix size {matrix_size} =====")
@@ -72,6 +112,14 @@ def main():
                 )
 
                 print(json.dumps(feedback, indent=4))
+
+                all_tests_passed = False
+                if feedback.get("tests"):
+                    all_tests_passed = all(test.get("passed", False) for test in feedback["tests"])
+
+                if all_tests_passed and human_in_loop:
+                    feedback["human_feedback"] = get_human_feedback()
+
                 history[(matrix_size, i)] = {
                     "code": generated_code,
                     "feedback": feedback,

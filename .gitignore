@@ -1,6 +1,7 @@
 workspace/
 
 src/agents/__pycache__/
+src/tools/__pycache__/
 temp.cpp
 benchmarking/mkl_gemm_benchmark
 

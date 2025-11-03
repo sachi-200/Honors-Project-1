@@ -5,25 +5,6 @@ import numpy as np
 import random
 import csv
 
-def get_human_feedback():
-    """Prompts the user for multi-line feedback until 'done' is entered."""
-    print("\nWAITING FOR HUMAN FEEDBACK")
-    print("Please enter your feedback for the generator.")
-    print("Type 'done' on a new, empty line when you are finished.")
-
-    lines = []
-    while True:
-        try:
-            line = input()
-            if line.strip().lower() == "done":
-                break
-            lines.append(line)
-        except EOFError:
-            break
-
-    print("--- ✅ Feedback captured ---")
-    return "\n".join(lines)
-
 def get_cpu_architecture():
     """Detects CPU architecture (AMD or Intel)."""
     try:
@@ -451,7 +432,5 @@ def evaluate_code(code_string, matrix_size, system_type):
         cache_analysis = get_cache_hierarchy_analysis(performance_metrics, arch)
         if not cache_analysis.get("error"):
             feedback["cache_hierarchy"] = cache_analysis
-
-    feedback["human_feedback"] = get_human_feedback()
 
     return feedback
