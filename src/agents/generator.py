@@ -35,23 +35,13 @@ class GeneratorAgent:
             history_text += f"Code:\n{entry['code']}\n"
             history_text += f"Feedback:\n{entry['feedback']}\n"
 
-        function_signatures = """
-            void gemm(const float* A, const float* B, float* C,
-                    int M, int N, int K,
-                    int lda, int ldb, int ldc);
-
-            void gemm_scalar(const float* A, const float* B, float* C,
+        # Base signature template
+        def get_signature(func_name: str) -> str:
+            return f"""
+            void {func_name}(const float* A, const float* B, float* C,
                             int M, int N, int K,
                             int lda, int ldb, int ldc);
-
-            void gemm_avx2(const float* A, const float* B, float* C,
-                        int M, int N, int K,
-                        int lda, int ldb, int ldc);
-
-            void gemm_avx512(const float* A, const float* B, float* C,
-                            int M, int N, int K,
-                            int lda, int ldb, int ldc);
-        """
+            """
 
         architecture_details = {
             "AMD-Ryzen-7-6800HS": """
@@ -68,12 +58,32 @@ class GeneratorAgent:
             """,
         }
 
+        if architecture not in architecture_details:
+            raise ValueError(f"Unknown architecture: {architecture}")
+
+        arch_info = architecture_details[architecture]
+
+        signatures_to_generate = { "gemm_scalar": get_signature("gemm_scalar") }
+        main_optimized_call = "gemm_scalar"
+
+        if "AVX-512" in arch_info:
+            signatures_to_generate["gemm_avx512"] = get_signature("gemm_avx512")
+            main_optimized_call = "gemm_avx512"
+        elif "AVX2" in arch_info:
+            signatures_to_generate["gemm_avx2"] = get_signature("gemm_avx2")
+            main_optimized_call = "gemm_avx2"
+        elif "AVX" in arch_info:
+            signatures_to_generate["gemm_avx"] = get_signature("gemm_avx")
+            main_optimized_call = "gemm_avx"
+
+        function_signatures = "\n".join(signatures_to_generate.values())
+
         full_prompt = f"""
             You are an expert **C++** programmer specializing in **CPU-optimized dense matrix multiplication (GEMM)** for x86-64.
-            Generate a **single, complete C++ source file** implementing the requested GEMM with **SIMD intrinsics** and **multi-threading**, tuned for the CPU below.
+            Generate a **single, complete C++ source file** implementing the requested GEMM functions, specifically tuned for the CPU below.
 
             **Target Platform (Host CPU):**
-            {architecture_details[architecture]}
+            {arch_info}
 
             **CRITICAL FUNCTION INFORMATION:**
             Based on analysis, the implementation requires these EXACT function signatures (C++):
@@ -93,60 +103,71 @@ class GeneratorAgent:
             2) **Includes & Build:**
             - Mandatory includes: <immintrin.h>, <iostream>, <vector>, <cstring>, <chrono>, <random>, <cassert>.
             - If using OpenMP: also include <omp.h> and guard logic if OpenMP is not available.
-            - Provide example compile commands (both AVX-512 and AVX2 fallbacks), e.g.:
-                - AVX-512: `g++ -O3 -march=x86-64-v3 -mavx512f -mfma -fopenmp gemm.cpp -o gemm`
-                - AVX2:    `g++ -O3 -march=x86-64-v2 -mavx2 -mfma -fopenmp gemm.cpp -o gemm`
-                - Portable: `g++ -O3 -march=native -fopenmp gemm.cpp -o gemm`
+            - Provide example compile commands for the *specific optimized kernel* being generated.
+                - If generating `gemm_avx512`: `g++ -O3 -march=x86-64-v3 -mavx512f -mfma -fopenmp gemm.cpp -o gemm`
+                - If generating `gemm_avx2`:    `g++ -O3 -march=x86-64-v2 -mavx2 -mfma -fopenmp gemm.cpp -o gemm`
+                - If generating `gemm_avx`:     `g++ -O3 -march=native -mavx -fopenmp gemm.cpp -o gemm`
+                - If generating `gemm_scalar` only: `g++ -O3 -march=native -fopenmp gemm.cpp -o gemm`
 
-            3) **SIMD & Dispatch:**
-            - Implement **runtime dispatch**:
-                - Prefer **AVX-512** kernel when `__builtin_cpu_supports("avx512f")` is true.
-                - Else use **AVX2+FMA** kernel when `__builtin_cpu_supports("avx2")`.
-                - Else fall back to a **scalar** reference kernel.
-            - Each kernel must share the **same external function signature(s)** given in {function_signatures}.
-            - Use 64-byte alignment where helpful for AVX-512 (32-byte for AVX2); handle unaligned tails safely.
+            3) **SIMD Implementation:**
+            - Implement **only the kernels requested** in the function signatures.
+            - `gemm_scalar` **must** be implemented as a simple, correct C++ reference.
+            - If `gemm_avx512` is requested, implement it using AVX-512 intrinsics (and guard with `#if defined(__AVX512F__)`).
+            - If `gemm_avx2` is requested, implement it using AVX2+FMA intrinsics (and guard with `#if defined(__AVX2__)`).
+            - If `gemm_avx` is requested, implement it using AVX intrinsics (and guard with `#if defined(__AVX__)`).
+            - **Do NOT implement runtime dispatch.** The `main` function will call the specific, optimized function directly.
 
             4) **Parallelization:**
-            - Use **OpenMP** for outer-loop parallelism over tiles/blocks (M×N).
+            - Use **OpenMP** for outer-loop parallelism over tiles/blocks (M×N) in the *optimized* kernel (`{main_optimized_call}`).
+            - The `gemm_scalar` reference implementation can be single-threaded.
             - Choose a sane default schedule (e.g., static or guided) and justify in comments.
-            - Ensure thread-safe writes (distinct C tiles per thread or proper reductions).
 
             5) **Blocking/Tiling & Memory:**
-            - Implement **cache-aware tiling** with tunable tile sizes **BM, BN, BK**.
+            - Implement **cache-aware tiling** with tunable tile sizes **BM, BN, BK** in the optimized kernel.
             - Favor row-major storage; document your convention.
             - Coalesce accesses and prefetch when beneficial (`_mm_prefetch`).
-            - Use **float32 accumulation** for numerical stability even if inputs are float16/bfloat16 (if supported); otherwise use float32 inputs.
 
             6) **Autotuning Parameters (Mandatory to expose as constants at the top or via constexpr):**
-            - **BM, BN, BK** (tile sizes) — explore values like: {32, 48, 64, 96, 128, 192}.
-            - **UNROLL_K** — inner K unroll factor (e.g., {1, 2, 4, 8}).
+            - **BM, BN, BK** (tile sizes) — explore values like: {{32, 48, 64, 96, 128, 192}}.
+            - **UNROLL_K** — inner K unroll factor (e.g., {{1, 2, 4, 8}}).
             - **NUM_THREADS** — optionally allow setting via OMP or environment; provide a CLI flag or environment read (`OMP_NUM_THREADS`).
-            - Provide a simple **autotune harness** (optional but preferred): try a few tile combos on a small warm-up and pick the best for the current run (time-boxed).
 
             7) **Edge Handling & Correctness:**
-            - Correctly handle M, N, K not divisible by tile or vector widths (tail processing).
+            - Correctly handle M, N, K not divisible by tile or vector widths (tail processing) in all kernels.
             - Avoid UB: masks or scalar tails for leftover columns/rows.
-            - Provide a **reference (scalar) implementation** used for optional correctness checking (A, B random init; compare C vs C_ref with a tolerance).
+            - The `gemm_scalar` implementation will be used for correctness checking.
 
             8) **Function Signatures (CRITICAL):**
             - Define EACH function with EXACTLY the signature(s) listed in {function_signatures}.
             - **Do NOT** change parameter names, counts, order, or const-ness.
             - All function calls must match their definitions exactly.
             - If the interface includes strides/leading dimensions (lda/ldb/ldc), use them correctly.
-            - If half-precision is requested, convert to float for accumulation.
 
-            9) **CLI / Demo Main:**
-            - Provide a `main()` that:
-                - Parses optional CLI args: M N K, seed, threads, and an optional **--dump-matrices** flag.
-                - Allocates and initializes A, B (random), C (zero).
-                - **If the `--dump-matrices` flag is present, it must write matrices A and B to `workspace/A.txt` and `workspace/B.txt` respectively.**
-                - Calls the top-level API from {function_signatures}, which internally dispatches to AVX-512/AVX2/scalar.
-                - **After the computation, if the `--dump-matrices` flag is present, it must write matrix C to `workspace/C.txt`.**
-                - Prints a short timing report (ms, effective GFLOP/s = 2*M*N*K / time).
-            - Include a helper function `void write_matrix_to_file(const std::string& filename, const float* matrix, int rows, int cols, int ld)` that writes a matrix to a text file in a space-separated format (one row per line). This function must correctly handle the leading dimension `ld`.
+            9) **CLI / Demo Main (CRITICAL LOGIC):**
+            - Provide a `main()` that parses CLI args: M N K, and an optional **--dump-matrices** flag.
+            - The `main` function must detect this flag to determine its behavior.
+            - Include the helper function `void write_matrix_to_file(const std::string& filename, const float* matrix, int rows, int cols, int ld)`.
+
+            - **IF `--dump-matrices` IS PRESENT (Test Mode):**
+                - Allocate A, B, C (for optimized), and C_ref (for scalar).
+                - Initialize A, B (random), C (zero), C_ref (zero).
+                - Call `write_matrix_to_file` to save A to `workspace/A.txt` and B to `workspace/B.txt`.
+                - Call `gemm_scalar(...)` to compute the reference result in `C_ref`.
+                - Call the **optimized function (`{main_optimized_call}`)** to compute the result in `C`.
+                - Call `write_matrix_to_file` to save the optimized result `C` to `workspace/C.txt`.
+                - Perform an internal correctness check by comparing `C` and `C_ref` and print "Internal check: PASSED" or "Internal check: FAILED".
+
+            - **IF `--dump-matrices` IS NOT PRESENT (Perf Mode):**
+                - Allocate A, B, C.
+                - Initialize A, B (random), C (zero).
+                - **ONLY** call the **optimized function (`{main_optimized_call}`)** to compute `C`.
+                - **Do NOT** call `gemm_scalar`.
+                - **Do NOT** write any files.
+                - **Do NOT** perform the internal correctness check.
+                - (Optional) You may still include an internal timer around the optimized call and print the GFLOPS, as this is good for debugging, but the Python evaluator will use its own timer.
 
             10) **Documentation & Comments:**
-            - Briefly explain blocking choices, threading strategy, and ISA dispatch.
+            - Briefly explain blocking choices, threading strategy, and the specific ISA kernel.
             - Comment the intrinsics code (register layout, accumulation pattern).
             - Mention cache levels (L1/L2/L3) and how tiles aim to fit/reuse.
 
@@ -154,8 +175,7 @@ class GeneratorAgent:
             - Pack micro-panels of B for better locality; consider packing A or both if time permits.
             - Favor **register blocking** for the inner micro-kernel (e.g., 8×8 or 16×8 accumulators for AVX-512/AVX2).
             - Use FMA where available; minimize gathers/scatters; prefer contiguous loads/stores.
-            - Use `_mm512_setzero_ps`, `_mm512_fmadd_ps`, `_mm512_loadu_ps`, `_mm512_storeu_ps` (AVX-512) or corresponding AVX2 intrinsics (`__m256`).
-            - Guard intrinsics with `#if defined(__AVX512F__)` / `#if defined(__AVX2__)` as needed.
+            - Guard intrinsics with `#if defined(__AVX512F__)` / `#if defined(__AVX2__)` as needed, so the file still compiles even if the user passes the wrong `-march` flag (though it won't run the kernel).
 
             **Final Verification Checklist:**
             1) ALL functions you define **exactly** match the signatures in {function_signatures}.
