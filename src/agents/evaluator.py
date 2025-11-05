@@ -122,50 +122,6 @@ def compute_roofline_metrics(performance_metrics, matrix_size, arch="unknown"):
 
     return result
 
-def run_intel_advisor_roofline(executable_path, matrix_size):
-    """
-    Runs Intel Advisor collection and launches the GUI.
-    Does NOT wait for human feedback.
-    """
-    project_dir = "./advisor_project"
-    os.makedirs(project_dir, exist_ok=True)
-
-    print("\t\tRunning Intel Advisor collection... (this may take a while)")
-    advisor_args = [str(matrix_size)] * 3
-    target_command = [f"./{executable_path}"] + advisor_args
-
-    collect_command = [
-        "advisor", "--collect=roofline", f"--project-dir={project_dir}",
-        "--",
-    ] + target_command
-
-    try:
-        subprocess.run(
-            collect_command, check=True, capture_output=True, text=True, timeout=1200
-        )
-    except FileNotFoundError:
-        return {"success": False, "error": "Intel Advisor (advisor) not found in PATH."}
-    except subprocess.TimeoutExpired:
-        return {"success": False, "error": "Intel Advisor collection timed out."}
-    except subprocess.CalledProcessError as e:
-        return {"success": False, "error": f"Advisor collection failed: {e.stderr}"}
-    except Exception as e:
-        return {"success": False, "error": f"An unexpected error occurred during Advisor collection: {e}"}
-
-    print("\t\tLaunching Intel Advisor GUI...")
-    try:
-        subprocess.Popen(["advisor-gui", project_dir])
-    except FileNotFoundError:
-        print("Warning: 'advisor-gui' not found. Please open the project manually:")
-        print(f"advisor-gui {project_dir}")
-    except Exception as e:
-        print(f"Warning: Could not launch GUI: {e}")
-
-    return {
-        "success": True,
-        "project_dir": os.path.abspath(project_dir),
-        "source": "Intel Advisor (Manual HITL)",
-    }
 
 def compile_code(code_string, output_filename="workspace/a.out", debug=False):
     """Compiles a string of C++ code with OpenMP enabled."""
@@ -418,12 +374,9 @@ def evaluate_code(code_string, matrix_size, system_type):
     performance_metrics = run_and_analyze("workspace/a.out", matrix_size=matrix_size, arch=arch)
     feedback["performance"] = performance_metrics
 
-    if is_intel:
-        print("\t 4) Performing Roofline Analysis using Intel Advisor")
-        roofline_results = run_intel_advisor_roofline("workspace/a.out", matrix_size)
-    else:
-        print(f"\t 4) Performing Roofline Analysis using perf data ({arch.upper()} counters)")
-        roofline_results = compute_roofline_metrics(performance_metrics, matrix_size, arch=arch)
+
+    print(f"\t 4) Performing Roofline Analysis using perf data ({arch.upper()} counters)")
+    roofline_results = compute_roofline_metrics(performance_metrics, matrix_size, arch=arch)
 
     feedback["roofline"] = roofline_results
 
