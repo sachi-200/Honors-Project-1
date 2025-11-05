@@ -56,7 +56,8 @@ def main():
         cpu_model = 'Intel-i7-1195G7'
     print(f"Using profile: {cpu_model}")
 
-    matrix_sizes = [128, 256, 512, 1024, 2048, 4096]
+    # matrix_sizes = [128, 256, 512, 1024, 2048, 4096]
+    matrix_sizes = [1024, 2048, 4096]
 
     generator = GeneratorAgent()
     history = {}
@@ -132,16 +133,36 @@ def main():
                     if current_gflops > max_gflops:
                         # Remove previous best file
                         if current_run_best_filepath and os.path.exists(current_run_best_filepath):
-                            os.remove(current_run_best_filepath)
+                            try:
+                                os.remove(current_run_best_filepath)
+                            except OSError:
+                                pass
+                            # also remove the corresponding .txt feedback file if present
+                            prev_txt = os.path.splitext(current_run_best_filepath)[0] + ".txt"
+                            if os.path.exists(prev_txt):
+                                try:
+                                    os.remove(prev_txt)
+                                except OSError:
+                                    pass
 
                         max_gflops = current_gflops
-                        filename = f"{next_file_num}-{max_gflops:.4f}.cpp"
-                        filepath = os.path.join(results_dir, filename)
-                        with open(filepath, "w") as f:
+                        filename_base = f"{next_file_num}-{max_gflops:.4f}"
+                        cpp_filename = f"{filename_base}.cpp"
+                        cpp_path = os.path.join(results_dir, cpp_filename)
+                        with open(cpp_path, "w") as f:
                             f.write(generated_code)
 
-                        current_run_best_filepath = filepath
-                        print(f"New best performance! Saved to {filepath}")
+                        # Save feedback next to the .cpp with same base name but .txt
+                        txt_filename = f"{filename_base}.txt"
+                        txt_path = os.path.join(results_dir, txt_filename)
+                        try:
+                            with open(txt_path, "w") as tf:
+                                tf.write(json.dumps(feedback, indent=4))
+                        except OSError:
+                            print(f"Warning: failed to write feedback file {txt_path}")
+
+                        current_run_best_filepath = cpp_path
+                        print(f"New best performance! Saved to {cpp_path} (feedback: {txt_path})")
                     else:
                         print(
                             f"Current performance: {current_gflops:.2f} GFLOPS "
