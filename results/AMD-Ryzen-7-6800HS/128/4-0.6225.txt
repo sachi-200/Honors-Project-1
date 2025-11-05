@@ -1,0 +1,88 @@
+{
+    "detected_architecture": "amd",
+    "compilation": {
+        "success": true,
+        "output": ""
+    },
+    "tests": [
+        {
+            "args": [
+                "32",
+                "32",
+                "32",
+                "--dump-matrices"
+            ],
+            "passed": true
+        },
+        {
+            "args": [
+                "64",
+                "128",
+                "256",
+                "--dump-matrices"
+            ],
+            "passed": true
+        },
+        {
+            "args": [
+                "127",
+                "31",
+                "63",
+                "--dump-matrices"
+            ],
+            "passed": true
+        },
+        {
+            "args": [
+                "512",
+                "512",
+                "512",
+                "--dump-matrices"
+            ],
+            "passed": true
+        },
+        {
+            "args": [
+                "1351",
+                "1175",
+                "1152",
+                "--dump-matrices"
+            ],
+            "passed": true
+        }
+    ],
+    "performance": {
+        "success": true,
+        "args": [
+            "128",
+            "128",
+            "128"
+        ],
+        "architecture": "amd",
+        "cycles": 19490023,
+        "instructions": 29358693,
+        "cache-references": 241081,
+        "cache-misses": 99992,
+        "branches": 2163898,
+        "branch-misses": 14794,
+        "L1-dcache-loads": 2362578,
+        "L1-dcache-load-misses": 66959,
+        "dmnd_mem_io_local": 662,
+        "dmnd_mem_io_remote": 0,
+        "any_mem_io_local": null,
+        "any_mem_io_remote": null,
+        "dmnd_lcl_l2": null,
+        "dmnd_int_cache": null,
+        "execution_time_seconds": 0.006737533,
+        "gflops": 0.6225281568194174
+    },
+    "roofline": {
+        "error": "No DRAM traffic detected. Data likely served from cache."
+    },
+    "cache_hierarchy": {
+        "l2_fill_percent": 0.0,
+        "l3_fill_percent": 0.0,
+        "dram_fill_percent": 100.0,
+        "cache_hit_rate": 0.0
+    }
+}

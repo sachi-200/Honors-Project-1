@@ -1,0 +1,107 @@
+{
+    "detected_architecture": "amd",
+    "compilation": {
+        "success": true,
+        "output": ""
+    },
+    "tests": [
+        {
+            "args": [
+                "32",
+                "32",
+                "32",
+                "--dump-matrices"
+            ],
+            "passed": true
+        },
+        {
+            "args": [
+                "64",
+                "128",
+                "256",
+                "--dump-matrices"
+            ],
+            "passed": true
+        },
+        {
+            "args": [
+                "127",
+                "31",
+                "63",
+                "--dump-matrices"
+            ],
+            "passed": true
+        },
+        {
+            "args": [
+                "512",
+                "512",
+                "512",
+                "--dump-matrices"
+            ],
+            "passed": true
+        },
+        {
+            "args": [
+                "1197",
+                "1275",
+                "1213",
+                "--dump-matrices"
+            ],
+            "passed": true
+        }
+    ],
+    "performance": {
+        "success": true,
+        "args": [
+            "512",
+            "512",
+            "512"
+        ],
+        "architecture": "amd",
+        "cycles": 217552329,
+        "instructions": 117356449,
+        "cache-references": 3071162,
+        "cache-misses": 350025,
+        "branches": 36937399,
+        "branch-misses": 150223,
+        "L1-dcache-loads": 59499221,
+        "L1-dcache-load-misses": 7871319,
+        "dmnd_mem_io_local": 10538,
+        "dmnd_mem_io_remote": 0,
+        "any_mem_io_local": 33940,
+        "any_mem_io_remote": 0,
+        "dmnd_lcl_l2": 1067325,
+        "dmnd_int_cache": 19173,
+        "execution_time_seconds": 0.016386159,
+        "gflops": 16.381841284464528
+    },
+    "roofline": {
+        "success": true,
+        "runtime_seconds": 0.016386159,
+        "data_moved_GB": 0.00217216,
+        "memory_bandwidth_measured_GBPS": 0.13256065683239127,
+        "operational_intensity": 123.57996464348851,
+        "attained_performance_GFLOPS": 16.381841284464528,
+        "ridge_point": 11.363321799307958,
+        "bound_by": "Compute Bound",
+        "max_performance_GFLOPS": 328.4,
+        "efficiency_percent": 4.98838041548859,
+        "peak_compute_GFLOPS": 328.4,
+        "peak_memory_GBPS": 28.9,
+        "data_source": "AMD DRAM fills",
+        "architecture": "amd",
+        "dram_fills_total": 33940,
+        "dram_fills_local": 33940,
+        "dram_fills_remote": 0,
+        "dram_fills_demand": 10538,
+        "dram_fills_prefetch": 23402,
+        "prefetch_percent": 68.9510901591043
+    },
+    "cache_hierarchy": {
+        "l2_fill_percent": 97.29170236892864,
+        "l3_fill_percent": 1.7477092821019546,
+        "dram_fill_percent": 0.9605883489694048,
+        "cache_hit_rate": 99.03941165103059
+    }
+}

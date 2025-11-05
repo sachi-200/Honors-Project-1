@@ -57,7 +57,7 @@ def main():
     print(f"Using profile: {cpu_model}")
 
     # matrix_sizes = [128, 256, 512, 1024, 2048, 4096]
-    matrix_sizes = [1024, 2048, 4096]
+    matrix_sizes = [128, 256, 512]
 
     generator = GeneratorAgent()
     history = {}
