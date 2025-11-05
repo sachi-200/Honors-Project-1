@@ -64,13 +64,12 @@ constexpr int BN = 96;
 constexpr int BK = 64;
 
 // UNROLL_K: Unroll factor for the innermost K loop within the micro-kernel.
-// Increased from 12 to 16 in this iteration.
-// The workload is still identified as Compute Bound. Further increasing UNROLL_K exposes more
-// Instruction-Level Parallelism (ILP) to the CPU's out-of-order execution engine. This can help
-// keep the FMA units more saturated by providing a larger window of independent operations,
-// reducing loop overhead, and potentially improving the average number of FMA instructions
-// issued per cycle on Zen 3. This leverages the strong out-of-order capabilities of the target CPU.
-constexpr int UNROLL_K = 16;
+// The workload has consistently been identified as Compute Bound. Previous iterations
+// explored increasing UNROLL_K to 32, which resulted in a slight performance degradation
+// compared to UNROLL_K=24. This suggests UNROLL_K=24 represents a better balance for
+// Zen 3's pipeline (balancing ILP, loop overhead, and register pressure) and leads to
+// better FMA unit saturation without excessive instruction window pressure or spills.
+constexpr int UNROLL_K = 24;
 
 // Helper function to write a matrix to a file
 // Matrices are assumed to be stored in row-major format.
