@@ -76,7 +76,7 @@ def main():
     print(f"Using profile: {cpu_model}")
 
     # matrix_sizes = [128, 256, 512, 1024, 2048, 4096]
-    matrix_sizes = [2048]
+    matrix_sizes = [4096]
 
     generator = GeneratorAgent()
     reflector = ReflectionAgent()

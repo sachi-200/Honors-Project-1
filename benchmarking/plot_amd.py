@@ -22,6 +22,7 @@ def plot_gflops_from_results(cpu_model_dir: str):
     perf_v2 = {}
     perf_v3 = {}
     perf_v4 = {}
+    perf_v5 = {}
 
     filename_pattern = re.compile(r'^(\d+)-(\d+\.\d+)\.cpp$')
 
@@ -44,8 +45,10 @@ def plot_gflops_from_results(cpu_model_dir: str):
                         perf_v3[matrix_size] = gflops
                     elif version == '4':
                         perf_v4[matrix_size] = gflops
+                    elif version == '5':
+                        perf_v5[matrix_size] = gflops
 
-    if not perf_v1 and not perf_v2 and not perf_v3 and not perf_v4:
+    if not perf_v1 and not perf_v2 and not perf_v3 and not perf_v4 and not perf_v5:
         print("No valid LLM data found to plot. Check the directory structure and filenames.")
         return
 
@@ -59,6 +62,7 @@ def plot_gflops_from_results(cpu_model_dir: str):
     matrix_sizes_v2, gflops_v2 = get_sorted_plot_data(perf_v2)
     matrix_sizes_v3, gflops_v3 = get_sorted_plot_data(perf_v3)
     matrix_sizes_v4, gflops_v4 = get_sorted_plot_data(perf_v4)
+    matrix_sizes_v5, gflops_v5 = get_sorted_plot_data(perf_v5)
 
     # --- Intel MKL Baseline Data ---
     mkl_matrix_sizes = [128, 256, 512, 1024, 2048, 4096]
@@ -73,6 +77,7 @@ def plot_gflops_from_results(cpu_model_dir: str):
     plt.plot(matrix_sizes_v2, gflops_v2, marker='^', linestyle='--', color='g', label='V2: With Roofline')
     plt.plot(matrix_sizes_v3, gflops_v3, marker='D', linestyle='-', color='m', label='V3: Roofline + Cache')
     plt.plot(matrix_sizes_v4, gflops_v4, marker='s', linestyle='-', color='c', label='V4: Removed Redundancies + Memory/Compute Specific Optimizations')
+    plt.plot(matrix_sizes_v5, gflops_v5, marker='p', linestyle='-', color='y', label='V5: Reflection Agent')
     plt.plot(mkl_matrix_sizes, mkl_gflops_values, marker='s', linestyle='-.', color='r', label='Intel MKL Baseline')
 
     # --- AXIS SCALING AND FORMATTING ---
@@ -119,6 +124,10 @@ def plot_gflops_from_results(cpu_model_dir: str):
     # V4 labels
     for i, txt in enumerate(gflops_v4):
         plt.annotate(f'{txt:.2f}', (matrix_sizes_v4[i], gflops_v4[i]), textcoords="offset points", xytext=text_offset_above, ha='center', color='c', fontsize=8)
+
+    # V5 labels
+    for i, txt in enumerate(gflops_v5):
+        plt.annotate(f'{txt:.2f}', (matrix_sizes_v5[i], gflops_v5[i]), textcoords="offset points", xytext=text_offset_above, ha='center', color='y', fontsize=8)
 
     # MKL labels
     for i, txt in enumerate(mkl_gflops_values):
