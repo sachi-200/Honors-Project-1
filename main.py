@@ -4,6 +4,7 @@ import json
 from typing import Optional
 from src.agents.evaluator import evaluate_code
 from src.agents.generator import GeneratorAgent
+from src.agents.reflection import ReflectionAgent
 
 
 def _human_in_loop_from_config(config_path: str = "config.yaml") -> bool:
@@ -15,6 +16,24 @@ def _human_in_loop_from_config(config_path: str = "config.yaml") -> bool:
                 if not line or line.startswith("#"):
                     continue
                 if line.startswith("human_in_the_loop"):
+                    parts = line.split("=", 1)
+                    if len(parts) != 2:
+                        return False
+                    val = parts[1].strip()
+                    return val.lower() in ("true", "1", "yes", "y")
+    except FileNotFoundError:
+        return False
+    return False
+
+def _get_reflection_agent_from_config(config_path: str = "config.yaml") -> bool:
+    """Read a config and return True if reflection_agent is true."""
+    try:
+        with open(config_path, "r", encoding="utf-8") as fh:
+            for raw in fh:
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.startswith("reflection_agent"):
                     parts = line.split("=", 1)
                     if len(parts) != 2:
                         return False
@@ -57,12 +76,14 @@ def main():
     print(f"Using profile: {cpu_model}")
 
     # matrix_sizes = [128, 256, 512, 1024, 2048, 4096]
-    matrix_sizes = [128, 256, 512]
+    matrix_sizes = [2048]
 
     generator = GeneratorAgent()
+    reflector = ReflectionAgent()
     history = {}
 
     human_in_loop = _human_in_loop_from_config()
+    reflection_agent = _get_reflection_agent_from_config()
 
     for matrix_size in matrix_sizes:
         print(f"\n===== Running benchmarks for matrix size {matrix_size} =====")
@@ -121,7 +142,21 @@ def main():
                 if all_tests_passed and human_in_loop:
                     feedback["human_feedback"] = get_human_feedback()
 
-                history[(matrix_size, i)] = {
+                if reflection_agent:
+                    # pass in the history so far, as well as the code generated in this agent and feedback received to the reflector
+                    reflection_suggestions = reflector.reflect(
+                        history,
+                        generated_code,
+                        feedback,
+                        architecture=cpu_model,
+                    )
+                    if reflection_suggestions:
+                        print("Reflection Agent Suggestions:")
+                        print(reflection_suggestions)
+                        feedback["reflection_suggestions"] = reflection_suggestions
+
+                # Store history with a JSON-serializable key to avoid tuple key errors
+                history[f"{matrix_size}:{i}"] = {
                     "code": generated_code,
                     "feedback": feedback,
                 }
