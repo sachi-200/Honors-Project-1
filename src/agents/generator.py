@@ -5,29 +5,52 @@ from src.tools.env_helper import load_api_key
 class GeneratorAgent:
     def __init__(self):
         self.API_KEY = load_api_key()
-        self.MODEL = "gemini-2.5-flash"
+        self.MODEL = "gemini-3-flash-preview"
         self.URL = f"https://generativelanguage.googleapis.com/v1beta/models/{self.MODEL}:generateContent?key={self.API_KEY}"
 
-    def _ask_gemini(self, prompt: str, retries=3, backoff_factor=0.5) -> str:
+    # def _ask_gemini(self, prompt: str, retries=3, backoff_factor=0.5) -> str:
+    #     headers = {"Content-Type": "application/json"}
+    #     data = {
+    #         "contents": [
+    #             {"parts": [{"text": prompt}]}
+    #         ]
+    #     }
+
+    #     for i in range(retries):
+    #         try:
+    #             response = requests.post(self.URL, headers=headers, json=data)
+    #             response.raise_for_status()
+    #             resp_json = response.json()
+    #             return resp_json["candidates"][0]["content"]["parts"][0]["text"]
+    #         except requests.exceptions.HTTPError as e:
+    #             if 500 <= e.response.status_code < 600:
+    #                 print(f"Server error ({e.response.status_code}), retrying in {backoff_factor * (2 ** i)} seconds...")
+    #                 time.sleep(backoff_factor * (2 ** i))
+    #             else:
+    #                 raise
+    def _ask_gemini(self, prompt: str, retries=5, backoff_factor=2) -> str:
         headers = {"Content-Type": "application/json"}
-        data = {
-            "contents": [
-                {"parts": [{"text": prompt}]}
-            ]
-        }
+        data = {"contents": [{"parts": [{"text": prompt}]}]}
 
         for i in range(retries):
-            try:
-                response = requests.post(self.URL, headers=headers, json=data)
-                response.raise_for_status()
-                resp_json = response.json()
-                return resp_json["candidates"][0]["content"]["parts"][0]["text"]
-            except requests.exceptions.HTTPError as e:
-                if 500 <= e.response.status_code < 600:
-                    print(f"Server error ({e.response.status_code}), retrying in {backoff_factor * (2 ** i)} seconds...")
-                    time.sleep(backoff_factor * (2 ** i))
-                else:
-                    raise
+            response = requests.post(self.URL, headers=headers, json=data)
+
+            if response.status_code == 429:
+                # Sleep longer each time we fail (2s, 4s, 8s...)
+                sleep_time = backoff_factor ** (i + 1)
+                print(f"Rate limited (429). Retrying in {sleep_time} seconds...")
+                time.sleep(sleep_time)
+                continue
+
+            if response.status_code == 404:
+                print(f"Error 404: The model name '{self.MODEL}' is incorrect.")
+                raise Exception("Fix the model name in generator.py")
+
+            response.raise_for_status()
+            resp_json = response.json()
+            return resp_json["candidates"][0]["content"]["parts"][0]["text"]
+
+        raise Exception("Failed to get response after multiple retries due to rate limits.")
 
     def generate_code(self, history: dict, architecture: str) -> str:
         history_text = ""
@@ -57,6 +80,14 @@ class GeneratorAgent:
             - Threads: 8 logical CPUs (4 cores, SMT/HT=2)
             - OS: Linux (assume recent GCC/Clang toolchain)
             """,
+            "AMD-EPYC-9365": """
+            - Architecture: x86_64 (Zen 4/5 AMD EPYC 9365)
+            - SIMD ISA: AVX2, FMA, and AVX-512 (Full 512-bit registers)
+            - Cores: 72 Physical Cores, 144 Logical Threads
+            - Topology: 2 Sockets, 2 NUMA Nodes
+            - L3 Cache: 384 MiB total (very large, favorable for blocking)
+            - OS: Linux (GCC/Clang)
+            """
         }
 
         if architecture not in architecture_details:
