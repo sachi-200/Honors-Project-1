@@ -25,3 +25,13 @@ CPU Configurations
             - Threads: 16 logical CPUs (8 cores, SMT/HT=2)
             - OS: Linux (assume recent GCC/Clang toolchain)
 ```
+
+```markdown
+**Target Platform (Host CPU):**
+            - Architecture: x86_64 (Zen 4/5 AMD EPYC 9365)
+            - SIMD ISA: AVX2, FMA, and AVX-512 (Full 512-bit registers)
+            - Cores: 72 Physical Cores, 144 Logical Threads
+            - Topology: 2 Sockets, 2 NUMA Nodes
+            - L3 Cache: 384 MiB total (very large, favorable for blocking)
+            - OS: Linux (GCC/Clang)
+```
