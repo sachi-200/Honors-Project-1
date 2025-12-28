@@ -1,0 +1,68 @@
+{
+    "detected_architecture": "amd_server",
+    "compilation": {
+        "success": true,
+        "output": ""
+    },
+    "tests": [
+        {
+            "args": [
+                "32",
+                "32",
+                "32",
+                "--dump-matrices"
+            ],
+            "passed": true
+        },
+        {
+            "args": [
+                "64",
+                "128",
+                "256",
+                "--dump-matrices"
+            ],
+            "passed": true
+        },
+        {
+            "args": [
+                "127",
+                "31",
+                "63",
+                "--dump-matrices"
+            ],
+            "passed": true
+        },
+        {
+            "args": [
+                "512",
+                "512",
+                "512",
+                "--dump-matrices"
+            ],
+            "passed": true
+        },
+        {
+            "args": [
+                "1283",
+                "1211",
+                "1415",
+                "--dump-matrices"
+            ],
+            "passed": true
+        }
+    ],
+    "performance": {
+        "success": true,
+        "execution_time_seconds": 0.07662900288899739,
+        "execution_time_std": 0.01571938061587409,
+        "gflops": 0.4378816209915455,
+        "num_runs": 3,
+        "method": "simple_timing",
+        "note": "Limited metrics available without perf access"
+    },
+    "roofline": {
+        "success": false,
+        "note": "Roofline analysis requires perf access. Basic timing metrics available only."
+    },
+    "reflection_suggestions": "The current implementation, while attempting to use AVX-512, suffers from extremely low performance (0.437 GFLOPS for 512x512x512 GEMM) despite passing all correctness tests. This indicates that the optimized AVX-512 fast path is likely being bypassed for a significant portion of the computation, and the scalar fallback is handling most of the work.\n\nThe root cause is the `if (i + RM <= m_limit && j + RN <= n_limit)` condition within the micro-kernel loops. Any micro-tile that doesn't perfectly align with the `RM` (8 rows) and `RN` (48 columns) dimensions falls back to a purely scalar GEMM. This scalar fallback negates almost all the benefits of AVX-512, especially for matrix sizes that are not perfect multiples of `RM` and `RN` or when boundary conditions of cache tiles (`BM`, `BN`) make the `m_limit` or `n_limit` not align with `RM` or `RN`.\n\nHere are specific, actionable suggestions for improvement:\n\n### Key Improvement Areas & Actionable Recommendations:\n\n1.  **Eliminate Scalar Tailing in the Micro-kernel (Critical):**\n    *   **Problem:** The current \"Slow Path\" executes a full scalar GEMM for any micro-block that doesn't perfectly fit `RM x RN`. This is the primary reason for the abysmal performance.\n    *   **Solution:** Replace the scalar tailing with a vectorized approach using AVX-512 masked operations. The micro-kernel should be generalized to handle partial `RM` rows and partial `RN` columns using masks (`_mm512_mask_loadu_ps`, `_mm512_mask_storeu_ps`, `_mm512_mask_set1_ps` if needed) and loop boundary checks, ensuring all computations stay on the SIMD path.\n    *   **Implementation Details:**\n        *   Remove the `if (i + RM <= m_limit && j + RN <= n_limit)` condition.\n        *   Inside the innermost `i` and `j` loops, define the `c_regs[RM][RN/16]` accumulators.\n        *   When loading initial `C` values, `B` values, and storing final `C` values:\n            *   For row dimension (`i + r`): Check `if (i + r < m_limit)`. If true, proceed; otherwise, set `c_regs[r][vec_idx]` to zero.\n            *   For column dimension (`j + vec_idx * 16`): Calculate `current_col = j + vec_idx * 16`. If `current_col < n_limit`, determine `elements_in_vec = std::min(16, n_limit - current_col)`. Create a mask `__mmask16 col_mask = (1 << elements_in_vec) - 1;` and use `_mm512_mask_loadu_ps` (for `C` and `B`) and `_mm512_mask_storeu_ps` (for `C`). If `current_col >= n_limit`, load/store zeros.\n        *   Ensure `_mm512_set1_ps(A[(i + r) * lda + k])` is only performed for `i + r < m_limit`.\n\n2.  **Implement K-loop Unrolling:**\n    *   **Problem:** The `UNROLL_K` constant is defined (`constexpr int UNROLL_K = 1;`) but not used, leading to an unrolled K-loop. This limits Instruction-Level Parallelism (ILP) and increases loop overhead.\n    *   **Solution:** Set `UNROLL_K` to a meaningful value (e.g., `4` or `8` for Zen 4) and implement explicit unrolling within the K-loop of the micro-kernel. This will allow the CPU to issue more instructions per cycle and keep the FMA units busy.\n    *   **Implementation Details:**\n        ```c++\n        // In constants:\n        constexpr int UNROLL_K = 4; // Or 8, depending on experimentation\n\n        // Inside the micro-kernel (after C accumulators initialized):\n        for (int k_unroll_start = k0; k_unroll_start < k_limit; k_unroll_start += UNROLL_K) {\n            // Process UNROLL_K iterations, handle K-tails if k_limit is not a multiple of UNROLL_K\n            for (int k_offset = 0; k_offset < UNROLL_K && (k_unroll_start + k_offset) < k_limit; ++k_offset) {\n                int k = k_unroll_start + k_offset;\n\n                // Load B vectors (with column masks, as per point 1)\n                __m512 b_regs[RN/16];\n                // ... B loading logic using masks ...\n\n                // FMA operations (with row checks, as per point 1)\n                for (int r = 0; r < RM; ++r) {\n                    if (i + r < m_limit) {\n                        __m512 a_scalar = _mm512_set1_ps(A[(i + r) * lda + k]);\n                        for (int vec_idx = 0; vec_idx < RN/16; ++vec_idx) {\n                            c_regs[r][vec_idx] = _mm512_fmadd_ps(a_scalar, b_regs[vec_idx], c_regs[r][vec_idx]);\n                        }\n                    }\n                }\n            }\n        }\n        ```\n\n3.  **Optimize Tiling Parameters (BM, BN, BK):**\n    *   **Problem:** The current tiling parameters (`BM=128, BN=192, BK=256`) are fixed. While they seem reasonable for L2/L3, they may not be optimal for all matrix sizes and could lead to sub-optimal cache utilization. The working set for `BM=128, BN=192, BK=256` is around 416KB, which is fine for L2 (1MB/core) but not L1 (64KB/core).\n    *   **Suggestion:** While extensive autotuning is beyond this scope, consider smaller `BM` and `BN` values (e.g., `BM=64, BN=64` or `BM=96, BN=96`) to improve L1 cache locality for the `C` matrix, especially for smaller problem sizes. For larger problems, the current values might be okay, but dynamic tuning based on `M, N, K` can yield better results. For now, focus on the critical issues above before micro-tuning these.\n\n### Revised `gemm_avx512` Micro-kernel Skeleton:\n\n```c++\nvoid gemm_avx512(const float* A, const float* B, float* C,\n                 int M, int N, int K,\n                 int lda, int ldb, int ldc) {\n#if defined(__AVX512F__)\n    #pragma omp parallel for collapse(2) schedule(static)\n    for (int m0 = 0; m0 < M; m0 += BM) {\n        for (int n0 = 0; n0 < N; n0 += BN) {\n            int m_limit = (m0 + BM < M) ? m0 + BM : M;\n            int n_limit = (n0 + BN < N) ? n0 + BN : N;\n\n            for (int k0 = 0; k0 < K; k0 += BK) {\n                int k_limit = (k0 + BK < K) ? k0 + BK : K;\n\n                for (int i = m0; i < m_limit; i += RM) {\n                    for (int j = n0; j < n_limit; j += RN) { // Still iterate by RN, but handle tails within it\n\n                        __m512 c_regs[RM][RN/16]; // RM=8, RN/16=3\n\n                        // 1. Initialize C accumulators (Load existing C or set to zero)\n                        for (int r = 0; r < RM; ++r) {\n                            // Check if current row (i+r) is within the actual matrix M dimension\n                            if (i + r < m_limit) {\n                                for (int vec_idx = 0; vec_idx < RN/16; ++vec_idx) {\n                                    int current_col_start = j + vec_idx * 16;\n                                    // Check if current vector block is within the actual matrix N dimension\n                                    if (current_col_start < n_limit) {\n                                        int elements_in_vec = std::min(16, n_limit - current_col_start);\n                                        __mmask16 col_mask = (1 << elements_in_vec) - 1;\n                                        c_regs[r][vec_idx] = _mm512_mask_loadu_ps(_mm512_setzero_ps(), col_mask, &C[(i + r) * ldc + current_col_start]);\n                                    } else {\n                                        c_regs[r][vec_idx] = _mm512_setzero_ps(); // Outside N boundary\n                                    }\n                                }\n                            } else {\n                                // Row is outside M boundary, zero out accumulators for this row\n                                for (int vec_idx = 0; vec_idx < RN/16; ++vec_idx) {\n                                    c_regs[r][vec_idx] = _mm512_setzero_ps();\n                                }\n                            }\n                        }\n\n                        // 2. K-loop (with UNROLL_K)\n                        for (int k_unroll_start = k0; k_unroll_start < k_limit; k_unroll_start += UNROLL_K) {\n                            for (int k_offset = 0; k_offset < UNROLL_K && (k_unroll_start + k_offset) < k_limit; ++k_offset) {\n                                int k = k_unroll_start + k_offset;\n\n                                // Load B vectors for current K iteration\n                                __m512 b_regs[RN/16];\n                                for (int vec_idx = 0; vec_idx < RN/16; ++vec_idx) {\n                                    int current_col_start = j + vec_idx * 16;\n                                    if (current_col_start < n_limit) {\n                                        int elements_in_vec = std::min(16, n_limit - current_col_start);\n                                        __mmask16 col_mask = (1 << elements_in_vec) - 1;\n                                        b_regs[vec_idx] = _mm512_mask_loadu_ps(_mm512_setzero_ps(), col_mask, &B[k * ldb + current_col_start]);\n                                    } else {\n                                        b_regs[vec_idx] = _mm512_setzero_ps(); // Outside N boundary\n                                    }\n                                }\n\n                                // Perform FMA operations\n                                for (int r = 0; r < RM; ++r) {\n                                    if (i + r < m_limit) { // Only compute if row is within M boundary\n                                        __m512 a_scalar = _mm512_set1_ps(A[(i + r) * lda + k]);\n                                        for (int vec_idx = 0; vec_idx < RN/16; ++vec_idx) {\n                                            c_regs[r][vec_idx] = _mm512_fmadd_ps(a_scalar, b_regs[vec_idx], c_regs[r][vec_idx]);\n                                        }\n                                    }\n                                }\n                            }\n                        }\n\n                        // 3. Store C accumulators\n                        for (int r = 0; r < RM; ++r) {\n                            if (i + r < m_limit) { // Only store if row is within M boundary\n                                for (int vec_idx = 0; vec_idx < RN/16; ++vec_idx) {\n                                    int current_col_start = j + vec_idx * 16;\n                                    if (current_col_start < n_limit) { // Only store if column is within N boundary\n                                        int elements_in_vec = std::min(16, n_limit - current_col_start);\n                                        __mmask16 col_mask = (1 << elements_in_vec) - 1;\n                                        _mm512_mask_storeu_ps(&C[(i + r) * ldc + current_col_start], col_mask, c_regs[r][vec_idx]);\n                                    }\n                                }\n                            }\n                        }\n                    } // end for j\n                } // end for i\n            } // end for k0\n        } // end for n0\n    } // end for m0\n#else\n    // Fallback if compiled without AVX-512 support\n    gemm_scalar(A, B, C, M, N, K, lda, ldb, ldc);\n#endif\n}\n```"
+}

@@ -1,0 +1,68 @@
+{
+    "detected_architecture": "amd_server",
+    "compilation": {
+        "success": true,
+        "output": ""
+    },
+    "tests": [
+        {
+            "args": [
+                "32",
+                "32",
+                "32",
+                "--dump-matrices"
+            ],
+            "passed": true
+        },
+        {
+            "args": [
+                "64",
+                "128",
+                "256",
+                "--dump-matrices"
+            ],
+            "passed": true
+        },
+        {
+            "args": [
+                "127",
+                "31",
+                "63",
+                "--dump-matrices"
+            ],
+            "passed": true
+        },
+        {
+            "args": [
+                "512",
+                "512",
+                "512",
+                "--dump-matrices"
+            ],
+            "passed": true
+        },
+        {
+            "args": [
+                "1043",
+                "1131",
+                "1493",
+                "--dump-matrices"
+            ],
+            "passed": true
+        }
+    ],
+    "performance": {
+        "success": true,
+        "execution_time_seconds": 0.1274870236714681,
+        "execution_time_std": 0.008654117291571277,
+        "gflops": 134.7577870220912,
+        "num_runs": 3,
+        "method": "simple_timing",
+        "note": "Limited metrics available without perf access"
+    },
+    "roofline": {
+        "success": false,
+        "note": "Roofline analysis requires perf access. Basic timing metrics available only."
+    },
+    "reflection_suggestions": "The current implementation is functional and correct, but the performance (~135 GFLOPS) is significantly below the theoretical peak of an AMD EPYC 9365 (Zen 4). On a high-core-count Zen 4 system, you should expect much higher throughput.\n\nThe primary bottlenecks in the current code are the **serial packing of Matrix B**, the **inefficient loop ordering** (causing excessive write-backs to Matrix C), and the **overhead of OpenMP fork-join** inside the K-loop.\n\n### 1. Optimize Loop Hierarchy (BLIS-style)\nIn the current code, the `ko` (K-tiling) loop is the outermost. This forces the processor to read and write the C-matrix tiles from/to memory for every K-block. \n**Suggestion:** Move the `no` (N-tiling) or `mo` (M-tiling) loop to the outermost position. This allows a thread to work on a tile of C and accumulate all K-contributions before writing the result back to memory once.\n\n**Recommended Order:**\n1.  **Loop N** (`no`) - Outermost\n2.  **Loop K** (`ko`)\n3.  **Pack B** (Pack the current tile of B into L2-friendly format)\n4.  **Loop M** (`mo`) - **Parallelize here**\n5.  **Micro-kernel** (Process $6 \\times 64$ block)\n\n### 2. Parallelize Matrix B Packing\nCurrently, `pack_B_tile` is called sequentially inside the `ko` loop. On a 32-core or 64-core EPYC, the time spent packing B while other cores idle is a massive bottleneck (Amdahl's Law).\n**Suggestion:** Move the `#pragma omp parallel` higher up and use a parallelized packing routine where threads cooperate to pack the B-tile, or have each thread pack only the portion of B it will use.\n\n### 3. Micro-kernel Unrolling (K-Dimension)\nThe inner loop `for (int k = 0; k < k_len; ++k)` executes one FMA at a time per accumulator. Zen 4 has high FMA latency (typically 4-5 cycles). To hide this latency and saturate the two FMA units, you should unroll the `k` loop.\n**Suggestion:** Unroll the `k` loop by a factor of 4.\n```cpp\nfor (int k = 0; k < (k_len & ~3); k += 4) {\n    // Process 4 k-steps at once\n    // Load b0..b3 for k, k+1, k+2, k+3\n    // Broadcast a for k, k+1, k+2, k+3\n    // This helps the scheduler find independent FMA instructions\n}\n// Handle k-tail...\n```\n\n### 4. Improve Register Management and \"Clean\" Kernels\nThe current micro-kernel includes `if (i_rem >= X)` checks inside the `k` loop. This adds branching overhead in the most performance-critical section.\n**Suggestion:** Create a \"clean\" micro-kernel for the case where `i_rem == 6` (the most common case) and a separate \"masked\" or \"tail\" kernel for the edges of the matrix. This removes branching from the hot loop.\n\n### 5. Memory Alignment and Allocation\nWhile you use `_mm_malloc`, allocating and freeing `packed_B` inside the GEMM function adds overhead.\n**Suggestion:** \n- For performance profiling, pre-allocate the packing buffer.\n- Ensure that the `lda`, `ldb`, and `ldc` are handled such that loads are aligned.\n- Use `_mm_prefetch` to bring the next `pA` and `pB` segments into L1/L2 cache while the current FMAs are calculating.\n\n### 6. Address NUMA and Thread Affinity\nAMD EPYC 9365 consists of multiple CCDs (Core Complex Dies). If your matrices are large, memory access across CCDs can be slow. \n**Suggestion:** \n- Use `static` scheduling in OpenMP to maintain data locality.\n- Ensure `BN` and `BK` are chosen such that the packed B-tile fits comfortably in the L3 cache shared by a CCD (usually 32MB). The current `BN=512, BK=256` results in a 512KB tile, which is excellent for L2, but you can potentially go larger to reduce packing overhead.\n\n### Specific Actionable Summary:\n1.  **Move `omp parallel`** to wrap the `mo` loop, which should be inside the `ko` loop.\n2.  **Parallelize the B-packing** using `#pragma omp parallel for` before entering the M-computation.\n3.  **Specialization:** Implement a version of the micro-kernel that assumes a full 6x64 block with no `if` conditions.\n4.  **Unroll the K-loop** by 4 inside the micro-kernel.\n5.  **Use `_mm512_load_ps`** for Matrix A if you decide to pack Matrix A as well (highly recommended for Zen 4 to ensure all loads are aligned)."
+}
