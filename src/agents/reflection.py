@@ -40,20 +40,62 @@ class ReflectionAgent:
             history_json = json.dumps(safe_history, indent=4)
 
         full_prompt = (
-            f"""You are a reflection agent that analyzes previously generated code and feedback to provide suggestions for improvement.
+    f"""You are an expert HPC programmer specializing in OpenMP optimization for CPU-based matrix multiplication (GEMM).
+        Analyze the current implementation, test results, and historical performance to provide actionable insights for improvement.
 
-            Architecture: {architecture}
+        Architecture: {architecture}
 
-            Currently Generated Code:
-            {generated_code}
+        Currently Generated Code:
+        ```cpp
+        {generated_code}
+        ```
 
-            Feedback Received:
-            {json.dumps(feedback, indent=4)}
+        Feedback Received:
+        {json.dumps(feedback, indent=4)}
 
-            History of generated code and feedback:
-            {history_json}
+        History of generated code and feedback:
+        {history_json}
 
-            Based on the above, provide suggestions on how to improve the generated code and its performance. Be specific and actionable in your recommendations.
-            """
+        # Analysis Framework
+
+        Analyze the implementation across these key areas:
+
+        1. **Performance Bottlenecks**: What's limiting GFLOPS? (memory bandwidth, cache misses, false sharing, compute vs memory bound)
+
+        2. **OpenMP Parallelization**: Is the parallel region optimal? Thread balance? Scheduling policy? Overhead issues?
+
+        3. **Memory & Cache**: Is loop tiling effective? Cache-friendly access patterns? Optimal tile sizes? Proper alignment?
+
+        4. **Vectorization**: Are loops vectorizing (#pragma omp simd)? Any inhibitors? SIMD opportunities?
+
+        5. **Algorithm & Loops**: Is loop order (IJK/IKJ/KIJ) optimal? Loop unrolling needed? Register reuse maximized?
+
+        6. **Historical Trends**: What worked before? Repeated mistakes? Progress or regression?
+
+        # Required Output Structure
+
+        ## Critical Issues
+        [List compilation errors, test failures, or blocking bugs - "None" if all passing]
+
+        ## Top 3 Bottlenecks
+        [Specific bottlenecks with evidence from feedback]
+        1.
+        2.
+        3.
+
+        ## Optimization Suggestions
+        [3-5 concrete, implementable changes]
+        1. [Specific change] → Expected: [impact estimate]
+        2. [Specific change] → Expected: [impact estimate]
+        3. [Specific change] → Expected: [impact estimate]
+
+        ## Code Modifications
+        [Specific code patterns or snippets to try next iteration]
+
+        ## Strategy for Next Iteration
+        [High-level direction based on history and current state]
+
+        Be specific and technical. No generic advice. Focus on actionable changes.
+        """
         )
         return self._ask_gemini(full_prompt)
