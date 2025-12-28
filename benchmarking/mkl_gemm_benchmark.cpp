@@ -3,6 +3,7 @@
 #include <chrono>
 #include <stdexcept>
 #include <cstdlib>
+#include <omp.h> // Add this include
 #include "mkl.h"
 
 // This program takes one command-line argument: the matrix size N.

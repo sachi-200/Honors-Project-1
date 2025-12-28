@@ -64,19 +64,21 @@ def get_human_feedback():
 
 def main():
     cpu_arch = ""
-    while cpu_arch not in ["amd", "intel"]:
-        cpu_arch = input("Enter CPU architecture (AMD/Intel): ").lower().strip()
-        if cpu_arch not in ["amd", "intel"]:
+    while cpu_arch not in ["amd", "intel", "amd_server"]:
+        cpu_arch = input("Enter CPU architecture (AMD/Intel/AMD_Server): ").lower().strip()
+        if cpu_arch not in ["amd", "intel", "amd_server"]:
             print("Invalid input. Please enter 'AMD' or 'Intel'.")
 
     if cpu_arch == "amd":
         cpu_model = 'AMD-Ryzen-7-6800HS'
-    else:
+    elif cpu_arch == "intel":
         cpu_model = 'Intel-i7-1195G7'
+    else:
+        cpu_model = 'AMD-EPYC-9365'
     print(f"Using profile: {cpu_model}")
 
     # matrix_sizes = [128, 256, 512, 1024, 2048, 4096]
-    matrix_sizes = [256]
+    matrix_sizes = [128]
 
     generator = GeneratorAgent()
     reflector = ReflectionAgent()
